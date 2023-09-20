@@ -24,9 +24,8 @@ module Node{
 
    uses interface CommandHandler;
 
-   uses interface S_Flood;
-   uses interface S_NeighborDiscovery;
-   uses interface Broadcast;
+   uses interface Flood;
+   uses interface NeighborDiscovery;
 }
 
 implementation{
@@ -42,7 +41,7 @@ implementation{
       dbg(GENERAL_CHANNEL, "Booted\n");
 
       if(TOS_NODE_ID == 1){
-         call S_NeighborDiscovery.setInterval(2);
+         call NeighborDiscovery.setInterval(2);
       }
 
    }
@@ -66,7 +65,7 @@ implementation{
          switch(myMsg->protocol){
             case PROTOCOL_NEIGHBOR:
                dbg(NEIGHBOR_CHANNEL, "Passing packet to Neighbor module\n");
-               call S_NeighborDiscovery.handle((uint8_t*)myMsg->payload);
+               call NeighborDiscovery.handle((uint8_t*)myMsg->payload);
                break;
                
             default:

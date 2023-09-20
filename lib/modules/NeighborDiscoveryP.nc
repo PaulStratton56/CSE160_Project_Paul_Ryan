@@ -1,8 +1,8 @@
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
 
-module S_NeighborDiscoveryP{
-    provides interface S_NeighborDiscovery;
+module NeighborDiscoveryP{
+    provides interface NeighborDiscovery;
 
     uses interface Timer<TMilli> as updateTimer;
     uses interface SimpleSend as sender;
@@ -63,7 +63,7 @@ implementation{
         }
     }
 
-    command error_t S_NeighborDiscovery.handle(uint8_t* payload){
+    command error_t NeighborDiscovery.handle(uint8_t* payload){
         uint8_t protocol = payload[1];
         
         if(protocol == PROTOCOL_NEIGHBORQUERY){
@@ -86,7 +86,7 @@ implementation{
 
     }
 
-    command error_t S_NeighborDiscovery.setInterval(uint8_t interval){
+    command error_t NeighborDiscovery.setInterval(uint8_t interval){
         PING_INTERVAL = interval;
         dbg(NEIGHBOR_CHANNEL, "Set ping interval to %d\n",interval);
         call updateTimer.startOneShot(PING_INTERVAL*1000);

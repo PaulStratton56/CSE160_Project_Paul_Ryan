@@ -1,3 +1,3 @@
-interface S_Flood{
+interface Flood{
     command error_t flood();
 }

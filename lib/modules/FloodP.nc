@@ -1,12 +1,12 @@
-module S_FloodP{
-    provides interface S_Flood;
+module FloodP{
+    provides interface Flood;
 
     uses interface SimpleSend;
 }
 
 implementation{
 
-    command error_t S_Flood.flood(){
+    command error_t Flood.flood(){
         dbg(GENERAL_CHANNEL, "Command Issued: flood.\n");
         return SUCCESS;
     }

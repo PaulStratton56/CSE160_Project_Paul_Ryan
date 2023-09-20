@@ -28,14 +28,11 @@ implementation {
     components new SimpleSendC(AM_PACK);
     Node.Sender -> SimpleSendC;
 
-    components S_FloodC;
-    Node.S_Flood -> S_FloodC;
+    components FloodC;
+    Node.Flood -> FloodC;
 
-    components S_NeighborDiscoveryC;
-    Node.S_NeighborDiscovery -> S_NeighborDiscoveryC;
-
-    components BroadcastC;
-    Node.Broadcast -> BroadcastC;
+    components NeighborDiscoveryC;
+    Node.NeighborDiscovery -> NeighborDiscoveryC;
 
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
