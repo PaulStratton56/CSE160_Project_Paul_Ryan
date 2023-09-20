@@ -1,5 +1,6 @@
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
+#include "../../includes/neighborPacket.h"
 
 module NeighborDiscoveryP{
     provides interface NeighborDiscovery;
@@ -17,13 +18,13 @@ implementation{
     uint8_t TABLE_SIZE = 50; //If you change this, also update in component file 'table' component.
     uint8_t targetNode;
 
-    void makeNeighborPack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length);
+    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length);
 
     task void ping(){
         pack queryPack;
-        uint8_t payload[2] = {TOS_NODE_ID, PROTOCOL_NEIGHBORQUERY};
-
-        makeNeighborPack(&queryPack, TOS_NODE_ID, AM_BROADCAST_ADDR, 0, PROTOCOL_NEIGHBOR, QUERY_SEQUENCE++, payload, PACKET_MAX_PAYLOAD_SIZE);
+        uint8_t payload[0];
+        
+        makePack(&queryPack, TOS_NODE_ID, AM_BROADCAST_ADDR, 0, PROTOCOL_NEIGHBORQUERY, QUERY_SEQUENCE++, payload, PACKET_MAX_PAYLOAD_SIZE);
         
         if(PING_INTERVAL == -1){
             dbg(NEIGHBOR_CHANNEL, "ERROR: Must setInterval before pinging.\n");
@@ -35,9 +36,9 @@ implementation{
 
     task void reply(){
         pack replyPack;
-        uint8_t payload[2] = {TOS_NODE_ID, PROTOCOL_NEIGHBORREPLY};
+        uint8_t payload[0];
 
-        makeNeighborPack(&replyPack, TOS_NODE_ID, targetNode, 0, PROTOCOL_NEIGHBOR, REPLY_SEQUENCE++, payload, PACKET_MAX_PAYLOAD_SIZE);
+        makePack(&replyPack, TOS_NODE_ID, targetNode, 0, PROTOCOL_NEIGHBORREPLY, REPLY_SEQUENCE++, payload, PACKET_MAX_PAYLOAD_SIZE);
 
         call sender.send(replyPack, targetNode);
         dbg(NEIGHBOR_CHANNEL, "Responded to %d\n", targetNode);
@@ -64,18 +65,16 @@ implementation{
         }
     }
 
-    command error_t NeighborDiscovery.handle(uint8_t* payload){
-        uint8_t protocol = payload[1];
-        
-        if(protocol == PROTOCOL_NEIGHBORQUERY){
-            targetNode = payload[0];
-            dbg(NEIGHBOR_CHANNEL, "Neighbor ID: %d, Message Type: QUERY\n",targetNode);
+    command error_t NeighborDiscovery.handle(neighborPacket* payload){
+        if(payload->protocol == PROTOCOL_NEIGHBORQUERY){
+            targetNode = payload->src;
+            dbg(NEIGHBOR_CHANNEL, "Neighbor ID: %d, Message Type: QUERY\n",payload->src);
 
             post reply();
         }
-        else if(protocol == PROTOCOL_NEIGHBORREPLY){
-            targetNode = payload[0];
-            dbg(NEIGHBOR_CHANNEL, "Neighbor ID: %d, Message Type: REPLY\n",targetNode);
+        else if(payload->protocol == PROTOCOL_NEIGHBORREPLY){
+            targetNode = payload->src;
+            dbg(NEIGHBOR_CHANNEL, "Neighbor ID: %d, Message Type: REPLY\n",payload->src);
 
             post addNeighbor(); 
         }
@@ -101,13 +100,19 @@ implementation{
         call updateTimer.startOneShot(PING_INTERVAL*1000);
     }
 
-    void makeNeighborPack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length){
+    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length){
+        neighborPacket* neighborMsg = (neighborPacket*) Package->payload;
+        
         Package->dest = dest;
         Package->src = src;
         Package->seq = seq;
         Package->TTL = 0;
-        Package->protocol = protocol;
-        memcpy(Package->payload, payload, length);
+        Package->protocol = PROTOCOL_NEIGHBOR;
+        
+        neighborMsg->src = src;
+        neighborMsg->protocol = protocol;
+        memcpy(neighborMsg->payload,payload,length - sizeof(neighborPacket));
+
     }
 
 }

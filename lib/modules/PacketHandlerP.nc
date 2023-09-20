@@ -1,4 +1,5 @@
 #include "../../includes/packet.h"
+#include "../../includes/neighborPacket.h"
 #include "../../includes/protocol.h"
 
 module PacketHandlerP{
@@ -13,7 +14,7 @@ implementation{
         switch(msg->protocol){
             case PROTOCOL_NEIGHBOR:
             dbg(NEIGHBOR_CHANNEL, "Passing packet to Neighbor module\n");
-            call Neighbor.handle((uint8_t*)msg->payload);
+            call Neighbor.handle( (neighborPacket*) msg->payload);
             break;
             
             default:
