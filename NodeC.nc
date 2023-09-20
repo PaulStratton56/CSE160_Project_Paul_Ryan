@@ -34,6 +34,9 @@ implementation {
     components NeighborDiscoveryC;
     Node.NeighborDiscovery -> NeighborDiscoveryC;
 
+    components PacketHandlerC;
+    Node.PacketHandler -> PacketHandlerC;
+
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
 }

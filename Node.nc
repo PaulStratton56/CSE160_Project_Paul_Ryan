@@ -12,7 +12,6 @@
 #include "includes/CommandMsg.h"
 #include "includes/sendInfo.h"
 #include "includes/channels.h"
-#include "includes/protocol.h"
 
 module Node{
    uses interface Boot;
@@ -26,6 +25,7 @@ module Node{
 
    uses interface Flood;
    uses interface NeighborDiscovery;
+   uses interface PacketHandler;
 }
 
 implementation{
@@ -40,9 +40,7 @@ implementation{
 
       dbg(GENERAL_CHANNEL, "Booted\n");
 
-      if(TOS_NODE_ID == 1){
-         call NeighborDiscovery.setInterval(2);
-      }
+      call NeighborDiscovery.setInterval(3);
 
    }
 
@@ -58,21 +56,12 @@ implementation{
    event void AMControl.stopDone(error_t err){}
 
    event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
-      dbg(GENERAL_CHANNEL, "Packet Received\n");
       if(len==sizeof(pack)){
          pack* myMsg=(pack*) payload;
          
-         switch(myMsg->protocol){
-            case PROTOCOL_NEIGHBOR:
-               dbg(NEIGHBOR_CHANNEL, "Passing packet to Neighbor module\n");
-               call NeighborDiscovery.handle((uint8_t*)myMsg->payload);
-               break;
-               
-            default:
-               dbg(GENERAL_CHANNEL, "ERROR: Protocol not recognized.",myMsg->protocol);
-               break;
-         }
-
+         dbg(GENERAL_CHANNEL, "Packet received, passing to handler\n");
+         call PacketHandler.handle(myMsg);
+         
          return msg;
       }
       dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len);

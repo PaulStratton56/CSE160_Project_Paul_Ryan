@@ -13,6 +13,7 @@ implementation{
     uint16_t QUERY_SEQUENCE = 0;
     uint16_t REPLY_SEQUENCE = 0;
     uint8_t PING_INTERVAL = -1;
+    uint8_t MAX_AGE = 5;
     uint8_t TABLE_SIZE = 50; //If you change this, also update in component file 'table' component.
     uint8_t targetNode;
 
@@ -44,7 +45,7 @@ implementation{
     }
 
     task void addNeighbor(){
-        call table.insert(targetNode, 3);
+        call table.insert(targetNode, MAX_AGE);
         dbg(NEIGHBOR_CHANNEL,"Added node %d as neighbor\n", targetNode);
         dbg(NEIGHBOR_CHANNEL,"Node %d now has age value of %d\n",targetNode, call table.get(targetNode));
     }
