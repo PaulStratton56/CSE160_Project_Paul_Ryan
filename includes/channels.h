@@ -5,11 +5,11 @@
 // of warnings.
 char COMMAND_CHANNEL[]="command";
 char GENERAL_CHANNEL[]="general";
+char HANDLER_CHANNEL[]="handler";
 
 // Project 1
 char NEIGHBOR_CHANNEL[]="neighbor";
 char FLOODING_CHANNEL[]="flooding";
-char BROADCAST_CHANNEL[]="broadcast";
 
 // Project 2
 char ROUTING_CHANNEL[]="routing";

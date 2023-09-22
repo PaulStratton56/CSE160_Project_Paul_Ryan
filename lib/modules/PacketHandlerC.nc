@@ -9,4 +9,7 @@ implementation{
     components NeighborDiscoveryC as Neighbor;
     PacketHandlerP.Neighbor -> Neighbor;
 
+    components FloodC;
+    PacketHandlerP.Flood -> FloodC;
+
 }

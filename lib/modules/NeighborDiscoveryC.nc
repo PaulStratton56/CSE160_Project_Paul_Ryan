@@ -12,7 +12,7 @@ implementation{
     components new SimpleSendC(AM_PACK) as sender;
     NeighborDiscoveryP.sender -> sender;
 
-    components new HashmapC(uint8_t, 50) as table;
+    components new HashmapC(uint8_t, 50) as table; //Change the 50 to TABLE_SIZE from NeighborDiscoveryP.
     NeighborDiscoveryP.table -> table;
 
 }

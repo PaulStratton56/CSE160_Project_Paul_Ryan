@@ -11,11 +11,11 @@ module NeighborDiscoveryP{
 }
 
 implementation{
-    uint16_t QUERY_SEQUENCE = 0;
-    uint16_t REPLY_SEQUENCE = 0;
+    uint16_t QUERY_SEQUENCE = 1;
+    uint16_t REPLY_SEQUENCE = 1;
     uint8_t PING_INTERVAL = -1;
     uint8_t MAX_AGE = 5;
-    uint8_t TABLE_SIZE = 50; //If you change this, also update in component file 'table' component.
+    uint8_t TABLE_SIZE = 50; //If you change this, also update component file.
     uint8_t targetNode;
 
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length);
