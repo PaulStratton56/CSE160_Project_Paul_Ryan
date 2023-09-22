@@ -1,18 +1,18 @@
-configuration NeighborDiscoveryC{
-    provides interface NeighborDiscovery;
+
+configuration neighborDiscoveryC{
+    provides interface neighborDiscovery;
 }
 
 implementation{
-    components NeighborDiscoveryP;
-    NeighborDiscovery = NeighborDiscoveryP.NeighborDiscovery;
+   components neighborDiscoveryP;
+   neighborDiscovery = neighborDiscoveryP.neighborDiscovery;
+   
+   components new SimpleSendC(AM_PACK) as pingSend;
+   neighborDiscoveryP.pingSend -> pingSend;
+   
+   components new TimerMilliC() as pingTimer;
+   neighborDiscoveryP.pingTimer -> pingTimer;
 
-    components new TimerMilliC() as updateTimer;
-    NeighborDiscoveryP.updateTimer -> updateTimer;
-
-    components new SimpleSendC(AM_PACK) as sender;
-    NeighborDiscoveryP.sender -> sender;
-
-    components new HashmapC(uint8_t, 50) as table;
-    NeighborDiscoveryP.table -> table;
-
+   components new HashmapC(uint16_t,32) as neighborhood;
+   neighborDiscoveryP.neighborhood -> neighborhood;
 }

@@ -9,7 +9,6 @@ char GENERAL_CHANNEL[]="general";
 // Project 1
 char NEIGHBOR_CHANNEL[]="neighbor";
 char FLOODING_CHANNEL[]="flooding";
-char BROADCAST_CHANNEL[]="broadcast";
 
 // Project 2
 char ROUTING_CHANNEL[]="routing";

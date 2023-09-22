@@ -77,6 +77,11 @@ implementation{
                 dbg(COMMAND_CHANNEL, "Command Type: Client\n");
                 signal CommandHandler.setTestServer();
                 break;
+            
+            case CMD_FLOOD:
+                dbg(COMMAND_CHANNEL, "Command Type: Flood | Payload: %s\n",&buff[1]);
+                signal CommandHandler.flood(&buff[1]);
+                break;
 
             default:
                 dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);

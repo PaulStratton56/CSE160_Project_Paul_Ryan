@@ -13,7 +13,8 @@ class TestSim:
     CMD_PING = 0
     CMD_NEIGHBOR_DUMP = 1
     CMD_ROUTE_DUMP=3
-
+    CMD_FLOOD = 31
+    
     # CHANNELS - see includes/channels.h
     COMMAND_CHANNEL="command";
     GENERAL_CHANNEL="general";
@@ -21,7 +22,6 @@ class TestSim:
     # Project 1
     NEIGHBOR_CHANNEL="neighbor";
     FLOODING_CHANNEL="flooding";
-    BROADCAST_CHANNEL="broadcast";
 
     # Project 2
     ROUTING_CHANNEL="routing";
@@ -105,7 +105,7 @@ class TestSim:
 
     # Rough run time. tickPerSecond does not work.
     def runTime(self, amount):
-        self.run(amount*70)
+        self.run(amount*1000)
 
     # Generic Command
     def sendCMD(self, ID, dest, payloadStr):
@@ -120,6 +120,9 @@ class TestSim:
     def ping(self, source, dest, msg):
         self.sendCMD(self.CMD_PING, source, "{0}{1}".format(chr(dest),msg));
 
+    def flood(self,source,msg):
+        self.sendCMD(self.CMD_FLOOD,source,"{0}{1}".format(chr(source),msg))
+    
     def neighborDMP(self, destination):
         self.sendCMD(self.CMD_NEIGHBOR_DUMP, destination, "neighbor command");
 
@@ -130,23 +133,25 @@ class TestSim:
         print 'Adding Channel', channelName;
         self.t.addChannel(channelName, out);
 
-    def removeChannel(self, channelName, out=sys.stdout):
-        print 'Removing Channel', channelName;
-        self.t.removeChannel(channelName, out);
-
 def main():
     s = TestSim();
-    s.runTime(1);
-    s.loadTopo("smalltopo.topo");
+    # s.runTime(10);
+    # s.loadTopo("long_line.topo");
+    s.loadTopo("example.topo");
     s.loadNoise("no_noise.txt");
     s.bootAll();
     s.addChannel(s.COMMAND_CHANNEL);
-    s.addChannel(s.GENERAL_CHANNEL);
-    s.addChannel(s.BROADCAST_CHANNEL);
+    # s.addChannel(s.GENERAL_CHANNEL);
     s.addChannel(s.NEIGHBOR_CHANNEL);
+    s.addChannel(s.HASHMAP_CHANNEL);
+    s.addChannel(s.FLOODING_CHANNEL);
 
-    s.runTime(5);
+    s.runTime(10);
+    # s.ping(1, 2, "Hello, World");
+    s.flood(1,"TSUNAMI!")
+    s.runTime(10);
+    # s.ping(1, 3, "Hi!");
+    # s.runTime(10);
 
 if __name__ == '__main__':
     main()
- 

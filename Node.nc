@@ -20,33 +20,26 @@ module Node{
    uses interface Receive;
 
    uses interface SimpleSend as Sender;
+   uses interface neighborDiscovery as nd;
+   uses interface flooding as flood;
 
    uses interface CommandHandler;
-
-   uses interface Flood;
-   uses interface NeighborDiscovery;
-   uses interface PacketHandler;
 }
 
 implementation{
    pack sendPackage;
-   pack broadcastPacket;
-
+   uint16_t floodSequence=0;
    // Prototypes
-   void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, uint8_t *payload, uint8_t length);
 
    event void Boot.booted(){
       call AMControl.start();
-
       dbg(GENERAL_CHANNEL, "Booted\n");
-
-      call NeighborDiscovery.setInterval(3);
-
    }
 
    event void AMControl.startDone(error_t err){
       if(err == SUCCESS){
          dbg(GENERAL_CHANNEL, "Radio On\n");
+         call nd.onBoot();
       }else{
          //Retry until successful
          call AMControl.start();
@@ -56,22 +49,41 @@ implementation{
    event void AMControl.stopDone(error_t err){}
 
    event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
+      dbg(GENERAL_CHANNEL, "Packet Received\n");
       if(len==sizeof(pack)){
-         pack* myMsg=(pack*) payload;
-         
-         dbg(GENERAL_CHANNEL, "Packet received, passing to handler\n");
-         call PacketHandler.handle(myMsg);
-         
+         pack* incomingMsg=(pack*) payload;
+         if(incomingMsg->protocol == PROTOCOL_PING){
+            // if(TOS_NODE_ID!=3 || (incomingMsg->seq<55 || incomingMsg->seq>60))
+            call nd.handlePingRequest(incomingMsg);
+            return msg;
+         }
+         else if(incomingMsg->protocol == PROTOCOL_PINGREPLY){
+            call nd.handlePingReply(incomingMsg);
+            return msg;
+         }
+         else if(incomingMsg->protocol == PROTOCOL_FLOOD){
+            call flood.flood(incomingMsg);
+            return msg;
+         }
+         dbg(GENERAL_CHANNEL, "Package Payload: %s\n", incomingMsg->payload);
          return msg;
       }
       dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len);
       return msg;
    }
 
+
    event void CommandHandler.ping(uint16_t destination, uint8_t *payload){
-      dbg(GENERAL_CHANNEL, "PING EVENT \n");
-      makePack(&sendPackage, TOS_NODE_ID, destination, 0, 0, 0, payload, PACKET_MAX_PAYLOAD_SIZE);
+      dbg(GENERAL_CHANNEL, "PING EVENT\n");
+      call Sender.makePack(&sendPackage, TOS_NODE_ID, destination, 0, 0, 0, payload, PACKET_MAX_PAYLOAD_SIZE);
       call Sender.send(sendPackage, destination);
+   }
+
+   event void CommandHandler.flood(uint8_t* payload){
+      dbg(GENERAL_CHANNEL, "FLOOD EVENT\n");
+      floodSequence++;
+      call Sender.makePack(&sendPackage,TOS_NODE_ID,TOS_NODE_ID,4,PROTOCOL_FLOOD,floodSequence,payload,PACKET_MAX_PAYLOAD_SIZE);
+      call Sender.send(sendPackage,AM_BROADCAST_ADDR);
    }
 
    event void CommandHandler.printNeighbors(){}
@@ -89,14 +101,4 @@ implementation{
    event void CommandHandler.setAppServer(){}
 
    event void CommandHandler.setAppClient(){}
-
-   void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length){
-      Package->src = src;
-      Package->dest = dest;
-      Package->TTL = TTL;
-      Package->seq = seq;
-      Package->protocol = protocol;
-      memcpy(Package->payload, payload, length);
-   }
-
 }

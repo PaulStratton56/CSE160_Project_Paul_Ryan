@@ -1,6 +1,11 @@
-#include "../../includes/neighborPacket.h"
+#include "../../includes/packet.h"
 
-interface NeighborDiscovery{
-    command error_t handle(neighborPacket* neighborPack);
-    command error_t setInterval(uint8_t interval);
+interface neighborDiscovery{
+    command void onBoot();
+    command void handlePingRequest(pack* pingRequest);
+    command void handlePingReply(pack* pingReply);
+    command uint32_t* getNeighbors();
+    command uint16_t numNeighbors();
+    command bool excessNeighbors();
+    command void printMyNeighbors();
 }

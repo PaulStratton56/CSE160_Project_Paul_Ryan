@@ -1,118 +1,96 @@
 #include "../../includes/packet.h"
-#include "../../includes/protocol.h"
-#include "../../includes/neighborPacket.h"
-
-module NeighborDiscoveryP{
-    provides interface NeighborDiscovery;
-
-    uses interface Timer<TMilli> as updateTimer;
-    uses interface SimpleSend as sender;
-    uses interface Hashmap<uint8_t> as table;
+#include <string.h>
+#include <stdio.h>
+module neighborDiscoveryP{
+    provides interface neighborDiscovery;
+    
+    uses interface SimpleSend as pingSend;
+    uses interface Timer<TMilli> as pingTimer;
+    uses interface Hashmap<uint16_t> as neighborhood;
 }
 
 implementation{
-    uint16_t QUERY_SEQUENCE = 0;
-    uint16_t REPLY_SEQUENCE = 0;
-    uint8_t PING_INTERVAL = -1;
-    uint8_t MAX_AGE = 5;
-    uint8_t TABLE_SIZE = 50; //If you change this, also update in component file 'table' component.
-    uint8_t targetNode;
-
-    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length);
-
+    pack myPing;
+    pack mypingReply;
+    uint32_t* myNeighbors;
     task void ping(){
-        pack queryPack;
-        uint8_t payload[0];
-        
-        makePack(&queryPack, TOS_NODE_ID, AM_BROADCAST_ADDR, 0, PROTOCOL_NEIGHBORQUERY, QUERY_SEQUENCE++, payload, PACKET_MAX_PAYLOAD_SIZE);
-        
-        if(PING_INTERVAL == -1){
-            dbg(NEIGHBOR_CHANNEL, "ERROR: Must setInterval before pinging.\n");
-        }
-
-        call sender.send(queryPack, AM_BROADCAST_ADDR);
-        dbg(NEIGHBOR_CHANNEL, "Broadcasted neighbor query\n");
+        myPing.seq +=1;
+        dbg(NEIGHBOR_CHANNEL,"Hello? Who's There?\n");
+        call pingSend.send(myPing,AM_BROADCAST_ADDR);
+        call pingTimer.startOneShot(2000);
     }
-
-    task void reply(){
-        pack replyPack;
-        uint8_t payload[0];
-
-        makePack(&replyPack, TOS_NODE_ID, targetNode, 0, PROTOCOL_NEIGHBORREPLY, REPLY_SEQUENCE++, payload, PACKET_MAX_PAYLOAD_SIZE);
-
-        call sender.send(replyPack, targetNode);
-        dbg(NEIGHBOR_CHANNEL, "Responded to %d\n", targetNode);
-
-    }
-
-    task void addNeighbor(){
-        call table.insert(targetNode, MAX_AGE);
-        dbg(NEIGHBOR_CHANNEL,"Added node %d as neighbor\n", targetNode);
-        dbg(NEIGHBOR_CHANNEL,"Node %d now has age value of %d\n",targetNode, call table.get(targetNode));
-    }
-
-    task void removeNeighbor(){
-        uint8_t i;
-        for(i = 0; i < TABLE_SIZE; i++){
-            uint8_t age = call table.get(i);
-            if(age > 0){
-                call table.insert(i, age-1);
-                dbg(NEIGHBOR_CHANNEL, "node %d age updated to %d\n",i,age-1);
-                if(age == 1){
-                    dbg(NEIGHBOR_CHANNEL, "Removed node %d as neighbor\n",i);
-                }
-            }
-        }
-    }
-
-    command error_t NeighborDiscovery.handle(neighborPacket* payload){
-        if(payload->protocol == PROTOCOL_NEIGHBORQUERY){
-            targetNode = payload->src;
-            dbg(NEIGHBOR_CHANNEL, "Neighbor ID: %d, Message Type: QUERY\n",payload->src);
-
-            post reply();
-        }
-        else if(payload->protocol == PROTOCOL_NEIGHBORREPLY){
-            targetNode = payload->src;
-            dbg(NEIGHBOR_CHANNEL, "Neighbor ID: %d, Message Type: REPLY\n",payload->src);
-
-            post addNeighbor(); 
-        }
-        else{
-            dbg(NEIGHBOR_CHANNEL, "ERROR: Neighbor payload has no recognizable protocol.\n");
-            return FAIL;
-        }
-        return SUCCESS;
-
-    }
-
-    command error_t NeighborDiscovery.setInterval(uint8_t interval){
-        PING_INTERVAL = interval;
-        dbg(NEIGHBOR_CHANNEL, "Set ping interval to %d\n",interval);
-        call updateTimer.startOneShot(PING_INTERVAL*1000);
-
-        return SUCCESS;
-    }
-
-    event void updateTimer.fired(){
+    command void neighborDiscovery.onBoot(){
+        //generates warnings about using string as payload
+        call pingSend.makePack(&myPing,TOS_NODE_ID, AM_BROADCAST_ADDR, 0, PROTOCOL_PING,0,"Who's there?", PACKET_MAX_PAYLOAD_SIZE);
+        call pingSend.makePack(&mypingReply,TOS_NODE_ID,0,0,PROTOCOL_PINGREPLY,0,"I'm here!",PACKET_MAX_PAYLOAD_SIZE);
         post ping();
-        post removeNeighbor();
-        call updateTimer.startOneShot(PING_INTERVAL*1000);
     }
 
-    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length){
-        neighborPacket* neighborMsg = (neighborPacket*) Package->payload;
-        
-        Package->dest = dest;
-        Package->src = src;
-        Package->seq = seq;
-        Package->TTL = 0;
-        Package->protocol = PROTOCOL_NEIGHBOR;
-        
-        neighborMsg->src = src;
-        neighborMsg->protocol = protocol;
-        memcpy(neighborMsg->payload,payload,length - sizeof(neighborPacket));
-
+    event void pingTimer.fired(){
+        uint16_t i=0;
+        uint16_t s;
+        uint8_t acceptableMisses=3;
+        myNeighbors = call neighborhood.getKeys(); 
+        //could do more analysis on data, especially if stored most recent data per node
+        //could do this with hashmap of linked list, using last k interactions 
+        //exponential importance model (more recent more important than a while ago)
+        while(i<call neighborhood.size()){
+            s=call neighborhood.get(myNeighbors[i]);
+            if((myPing.seq-s)>acceptableMisses){   
+                //if last seq was at least 6s, 
+                //conclude it is no longer a neighbor
+                dbg(NEIGHBOR_CHANNEL,"Removing %hhu,%hhu from my list for being older than %hhu.\n",myNeighbors[i],s,myPing.seq-acceptableMisses);
+                call neighborhood.remove(myNeighbors[i]);
+                i--;
+            }
+            i++;
+        }
+        post ping();
     }
 
+    command void neighborDiscovery.handlePingRequest(pack* pingRequest){
+        //can I add them as a neighbor if they ping me first?
+        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",pingRequest->src);
+        // logPack(pingRequest,NEIGHBOR_CHANNEL);
+        mypingReply.dest = pingRequest->src;
+        mypingReply.seq = pingRequest->seq;
+        call pingSend.send(mypingReply,mypingReply.dest);
+    }
+    
+    command void neighborDiscovery.handlePingReply(pack* pingReply){
+        dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",pingReply->src);
+        // logPack(pingReply,NEIGHBOR_CHANNEL);
+        // dbg(NEIGHBOR_CHANNEL,"Updating %hhu,%hhu in my list\n",pingReply->src,pingReply->seq);
+        call neighborhood.insert(pingReply->src,pingReply->seq);
+    }
+    
+    command uint32_t* neighborDiscovery.getNeighbors(){
+        return call neighborhood.getKeys();
+    }
+    command uint16_t neighborDiscovery.numNeighbors(){
+        return call neighborhood.size();
+    }
+    command bool neighborDiscovery.excessNeighbors(){
+        return call neighborhood.size()==call neighborhood.maxSize();
+    }
+    command void neighborDiscovery.printMyNeighbors(){
+        uint16_t size = call neighborhood.size();
+        char sNeighbor[] = "";
+        char buffer[3*size];
+        uint32_t neighbor = 0;
+        int i=0;
+        int j=0;
+        int bufferIndex=0;
+        myNeighbors = call neighborhood.getKeys();
+        for (i=0;i<size;i++){
+            neighbor = myNeighbors[i];
+            sprintf(sNeighbor,"%u", (unsigned int)neighbor);
+            buffer[bufferIndex]=sNeighbor[0];
+            buffer[bufferIndex+1]=',';
+            buffer[bufferIndex+2]=' ';
+            bufferIndex+=3;
+        }
+        buffer[bufferIndex-2]='\00';//dont need last , and space
+        dbg(FLOODING_CHANNEL,"My Neighbors are: %s\n",buffer);
+    }
 }

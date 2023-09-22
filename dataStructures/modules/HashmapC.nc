@@ -51,7 +51,7 @@ implementation{
          j=hash(k, i);
 
          // Check to see if the key is free or if we already have a value located here.
-         if(map[j].key==EMPTY_KEY || map[j].key==k){
+         if(map[j].key==EMPTY_KEY || map[j].key==k){//if collision, overwrite old value
              // If the key is empty, we can add it to the list of keys and increment
              // the total number of values we have..
             if(map[j].key==EMPTY_KEY){
@@ -68,6 +68,7 @@ implementation{
       // This will allow a total of HASH_MAX_SIZE misses. It can be greater,
       // BUt it is unlikely to occur.
       }while(i<HASH_MAX_SIZE);
+      dbg(HASHMAP_CHANNEL,"Can't insert Item into Full Hashmap.\n");
    }
 
 
@@ -169,5 +170,8 @@ implementation{
 
    command uint16_t Hashmap.size(){
       return numofVals;
+   }
+   command uint16_t Hashmap.maxSize(){
+      return HASH_MAX_SIZE;
    }
 }
