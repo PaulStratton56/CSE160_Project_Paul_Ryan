@@ -23,6 +23,7 @@ module Node{
    uses interface SimpleSend as Sender;
    uses interface neighborDiscovery as nd;
    uses interface flooding as flood;
+   uses interface PacketHandler;
 
    uses interface CommandHandler;
 }
@@ -53,19 +54,9 @@ implementation{
       dbg(GENERAL_CHANNEL, "Packet Received\n");
       if(len==sizeof(pack)){
          pack* incomingMsg=(pack*) payload;
-         if(incomingMsg->protocol == PROTOCOL_PING){
-            // if(TOS_NODE_ID!=3 || (incomingMsg->seq<55 || incomingMsg->seq>60))
-            call nd.handlePingRequest(incomingMsg);
-            return msg;
-         }
-         else if(incomingMsg->protocol == PROTOCOL_PINGREPLY){
-            call nd.handlePingReply(incomingMsg);
-            return msg;
-         }
-         else if(incomingMsg->protocol == PROTOCOL_FLOOD){
-            call flood.flood(incomingMsg);
-            return msg;
-         }
+         
+         call PacketHandler.handle(incomingMsg);
+
          dbg(GENERAL_CHANNEL, "Package Payload: %s\n", incomingMsg->payload);
          return msg;
       }

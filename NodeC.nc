@@ -33,7 +33,10 @@ implementation {
 
     components neighborDiscoveryC;
     Node.nd -> neighborDiscoveryC;
-    
+
+    components PacketHandlerC;
+    Node.PacketHandler -> PacketHandlerC;
+
     components floodingC;
     Node.flood -> floodingC;
 }

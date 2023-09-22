@@ -6,10 +6,10 @@ implementation{
     components PacketHandlerP;
     PacketHandler = PacketHandlerP.PacketHandler;
 
-    components NeighborDiscoveryC as Neighbor;
-    PacketHandlerP.Neighbor -> Neighbor;
+    components neighborDiscoveryC;
+    PacketHandlerP.nd -> neighborDiscoveryC;
 
-    components FloodC;
-    PacketHandlerP.Flood -> FloodC;
+    components floodingC;
+    PacketHandlerP.flood -> floodingC;
 
 }
