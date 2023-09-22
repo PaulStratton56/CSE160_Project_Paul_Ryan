@@ -12,6 +12,7 @@
 #include "includes/CommandMsg.h"
 #include "includes/sendInfo.h"
 #include "includes/channels.h"
+#include "includes/protocol.h"
 
 module Node{
    uses interface Boot;
@@ -68,7 +69,7 @@ implementation{
          dbg(GENERAL_CHANNEL, "Package Payload: %s\n", incomingMsg->payload);
          return msg;
       }
-      dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len);
+      dbg(HANDLER_CHANNEL, "Unknown Packet Type %d\n", len);
       return msg;
    }
 
