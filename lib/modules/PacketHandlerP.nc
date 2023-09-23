@@ -1,4 +1,5 @@
 #include "../../includes/packet.h"
+#include "../../includes/floodpack.h"
 #include "../../includes/ndpack.h"
 #include "../../includes/protocol.h"
 
@@ -22,7 +23,7 @@ implementation{
            return SUCCESS;
         }
         else if(incomingMsg->protocol == PROTOCOL_FLOOD){
-           call flood.flood(incomingMsg);
+           call flood.flood((uint8_t*) incomingMsg->payload);
            return SUCCESS;
         }    
     }

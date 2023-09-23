@@ -13,6 +13,7 @@
 #include "includes/sendInfo.h"
 #include "includes/channels.h"
 #include "includes/protocol.h"
+#include "includes/floodpack.h"
 
 module Node{
    uses interface Boot;
@@ -51,13 +52,14 @@ implementation{
    event void AMControl.stopDone(error_t err){}
 
    event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
-      dbg(GENERAL_CHANNEL, "Packet Received\n");
+      dbg(HANDLER_CHANNEL, "Packet Received\n");
       if(len==sizeof(pack)){
          pack* incomingMsg=(pack*) payload;
          
+         dbg(HANDLER_CHANNEL, "Packet -> Handler");
          call PacketHandler.handle(incomingMsg);
 
-         dbg(GENERAL_CHANNEL, "Package Payload: %s\n", incomingMsg->payload);
+         dbg(HANDLER_CHANNEL, "Package Payload: %s\n", incomingMsg->payload);
          return msg;
       }
       dbg(HANDLER_CHANNEL, "Unknown Packet Type %d\n", len);
@@ -72,9 +74,10 @@ implementation{
    }
 
    event void CommandHandler.flood(uint8_t* payload){
+      floodpack innerPack;
       dbg(GENERAL_CHANNEL, "FLOOD EVENT\n");
-      floodSequence++;
-      call Sender.makePack(&sendPackage,TOS_NODE_ID,TOS_NODE_ID,4,PROTOCOL_FLOOD,floodSequence,payload,PACKET_MAX_PAYLOAD_SIZE);
+      call flood.makeFloodPack(&innerPack, TOS_NODE_ID, TOS_NODE_ID, floodSequence++, 250, PROTOCOL_FLOOD, payload);
+      call Sender.makePack(&sendPackage,TOS_NODE_ID,AM_BROADCAST_ADDR,4,PROTOCOL_FLOOD,floodSequence,(uint8_t*) &innerPack,PACKET_MAX_PAYLOAD_SIZE);
       call Sender.send(sendPackage,AM_BROADCAST_ADDR);
    }
 

@@ -1,4 +1,5 @@
 #include "../../includes/packet.h"
+#include "../../includes/ndpack.h"
 #include <string.h>
 #include <stdio.h>
 module neighborDiscoveryP{
@@ -19,6 +20,7 @@ implementation{
         call pingSend.send(myPing,AM_BROADCAST_ADDR);
         call pingTimer.startOneShot(2000);
     }
+
     command void neighborDiscovery.onBoot(){
         //generates warnings about using string as payload
         call pingSend.makePack(&myPing,TOS_NODE_ID, AM_BROADCAST_ADDR, 0, PROTOCOL_PING,0,"Who's there?", PACKET_MAX_PAYLOAD_SIZE);
