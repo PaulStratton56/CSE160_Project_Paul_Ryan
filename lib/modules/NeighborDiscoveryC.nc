@@ -15,4 +15,7 @@ implementation{
 
    components new HashmapC(uint16_t,32) as neighborhood;
    neighborDiscoveryP.neighborhood -> neighborhood;
+
+   components PacketHandlerC as PacketHandler;
+   neighborDiscoveryP.PacketHandler -> PacketHandler;
 }

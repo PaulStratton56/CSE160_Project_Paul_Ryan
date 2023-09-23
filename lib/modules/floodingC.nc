@@ -16,4 +16,7 @@ implementation{
 
    components neighborDiscoveryC as neighborhood;
    floodingP.neighborhood -> neighborhood;
+   
+   components PacketHandlerC as PacketHandler;
+   floodingP.PacketHandler -> PacketHandler;
 }

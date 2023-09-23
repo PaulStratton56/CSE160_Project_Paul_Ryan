@@ -80,7 +80,10 @@ implementation{
       call Sender.makePack(&sendPackage,TOS_NODE_ID,AM_BROADCAST_ADDR,4,PROTOCOL_FLOOD,floodSequence,(uint8_t*) &innerPack,PACKET_MAX_PAYLOAD_SIZE);
       call Sender.send(sendPackage,AM_BROADCAST_ADDR);
    }
-
+   event void PacketHandler.gotPingReply(pack* _){}
+   event void PacketHandler.gotPingRequest(pack* _){}
+   event void PacketHandler.gotflood(pack* _){}
+   
    event void CommandHandler.printNeighbors(){}
 
    event void CommandHandler.printRouteTable(){}

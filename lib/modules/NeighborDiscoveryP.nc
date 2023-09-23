@@ -8,11 +8,13 @@ module neighborDiscoveryP{
     uses interface SimpleSend as pingSend;
     uses interface Timer<TMilli> as pingTimer;
     uses interface Hashmap<uint16_t> as neighborhood;
+    uses interface PacketHandler;
 }
 
 implementation{
     pack myPing;
     pack mypingReply;
+    pack myPack;
     uint32_t* myNeighbors;
     task void ping(){
         ndpack* innerPack = (ndpack*) myPing.payload;
@@ -39,19 +41,20 @@ implementation{
 
     event void pingTimer.fired(){
         uint16_t i=0;
-        uint16_t s;
+        uint16_t seq;
         uint8_t acceptableMisses=3;
+        uint16_t numNeighbors = call neighborhood.size();
         myNeighbors = call neighborhood.getKeys(); 
         //could do more analysis on data, especially if stored most recent data per node
         //could do this with hashmap of linked list, using last k interactions 
         //exponential importance model (more recent more important than a while ago)
-        while(i<call neighborhood.size()){
+        while(i<numNeighbors){
             ndpack* innerPack = (ndpack*) myPing.payload;
-            s=call neighborhood.get(myNeighbors[i]);
-            if((innerPack->seq-s)>acceptableMisses){   
+            seq=call neighborhood.get(myNeighbors[i]);
+            if((innerPack->seq-seq)>acceptableMisses){
                 //if last seq was at least 6s, 
                 //conclude it is no longer a neighbor
-                dbg(NEIGHBOR_CHANNEL,"Removing %hhu,%hhu from my list for being older than %hhu.\n",myNeighbors[i],s,myPing.seq-acceptableMisses);
+                dbg(NEIGHBOR_CHANNEL,"Removing %hhu,%hhu from my list for being older than %hhu.\n",myNeighbors[i],seq,myPing.seq-acceptableMisses);
                 call neighborhood.remove(myNeighbors[i]);
                 i--;
             }
@@ -60,35 +63,43 @@ implementation{
         post ping();
     }
 
-    command error_t neighborDiscovery.handlePack(uint8_t* alertPacket){
-        ndpack* packet = (ndpack*) alertPacket;
-        if(packet->protocol == PROTOCOL_PING){
-            call neighborDiscovery.handlePingRequest(packet);
-        }
-        else{
-            call neighborDiscovery.handlePingReply(packet);
-        }
-        return SUCCESS;
+    task void respondtoPingRequest(){
+        ndpack* innerReplyPack = (ndspack*) mypingReply.protocol;
+        ndpack* innerPack = (ndspack*) myPack.protocol;
+        
+        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",innerPack->src);
+
+        innerReplyPack->seq = innerPack->seq;
+        call pingSend.send(mypingReply,innerPack->src);
     }
 
-    command void neighborDiscovery.handlePingRequest(ndpack* pingRequest){
-        ndpack* innerPack = (ndpack*) mypingReply.payload;
-        //can I add them as a neighbor if they ping me first?
-        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",pingRequest->src);
-        // logPack(pingRequest,NEIGHBOR_CHANNEL);
-        innerPack->seq = pingRequest->seq;
-        call pingSend.send(mypingReply,pingRequest->src);
-    }
-    
-    command void neighborDiscovery.handlePingReply(ndpack* pingReply){
-        dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",pingReply->src);
+    task void respondtoPingReply(){
+        ndpack* innerPack = (ndspack*) myPack.protocol;
+        dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",innerPack->src);
         // logPack(pingReply,NEIGHBOR_CHANNEL);
         // dbg(NEIGHBOR_CHANNEL,"Updating %hhu,%hhu in my list\n",pingReply->src,pingReply->seq);
-        call neighborhood.insert(pingReply->src,pingReply->seq);
-        dbg(NEIGHBOR_CHANNEL, "Updated %d with %d\n",pingReply->src, pingReply->seq);
-        call neighborDiscovery.printMyNeighbors();
+        call neighborhood.insert(innerPack->src,innerPack->seq);
     }
+
+    event void PacketHandler.gotPing(uint8_t* packet){
+        ndpack* innerPack = (ndpack*) myPack.payload;
+        memcpy(innerPack,(ndpack*) packet,20);
+
+        if(innerPack->protocol == PROTOCOL_PING){
+            post respondtoPingRequest();
+        }
+        else{
+            post respondtoPingReply();
+        }
+    }
+
+    event void PacketHandler.gotflood(pack* _){}
     
+    event void PacketHandler.gotPingReply(pack* pingReply){
+        memcpy(&myPack,pingReply,28);
+        post addNeighbor();
+    }
+
     command uint32_t* neighborDiscovery.getNeighbors(){
         return call neighborhood.getKeys();
     }

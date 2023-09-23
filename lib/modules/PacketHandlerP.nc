@@ -13,12 +13,15 @@ module PacketHandlerP{
 implementation{
 
     command error_t PacketHandler.handle(pack* incomingMsg){
-        if(incomingMsg->protocol == PROTOCOL_NEIGHBOR){
-            call nd.handlePack((uint8_t*) incomingMsg->payload);
-        }
-        else if(incomingMsg->protocol == PROTOCOL_FLOOD){
-           call flood.flood((uint8_t*) incomingMsg->payload);
-        }    
+        uint8_t* payload = (uint8_t*) incomingMsg->payload;
+        switch(incomingMsg->protocol){
+            case PROTOCOL_NEIGHBOR:
+                signal PacketHandler.gotPing(payload);
+                break;
+            case PROTOCOL_FLOOD:
+                signal PacketHandler.gotflood(payload);
+                break;
+        }  
         return SUCCESS;
     }
 
