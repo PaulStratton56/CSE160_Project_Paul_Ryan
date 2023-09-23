@@ -7,11 +7,13 @@ module neighborDiscoveryP{
     uses interface SimpleSend as pingSend;
     uses interface Timer<TMilli> as pingTimer;
     uses interface Hashmap<uint16_t> as neighborhood;
+    uses interface PacketHandler;
 }
 
 implementation{
     pack myPing;
     pack mypingReply;
+    pack myPack;
     uint32_t* myNeighbors;
     task void ping(){
         myPing.seq +=1;
@@ -30,11 +32,12 @@ implementation{
         uint16_t i=0;
         uint16_t s;
         uint8_t acceptableMisses=3;
+        uint16_t numNeighbors = call neighborhood.size();
         myNeighbors = call neighborhood.getKeys(); 
         //could do more analysis on data, especially if stored most recent data per node
         //could do this with hashmap of linked list, using last k interactions 
         //exponential importance model (more recent more important than a while ago)
-        while(i<call neighborhood.size()){
+        while(i<numNeighbors){
             s=call neighborhood.get(myNeighbors[i]);
             if((myPing.seq-s)>acceptableMisses){   
                 //if last seq was at least 6s, 
@@ -48,22 +51,33 @@ implementation{
         post ping();
     }
 
-    command void neighborDiscovery.handlePingRequest(pack* pingRequest){
+    task void respondtoPingRequest(){
         //can I add them as a neighbor if they ping me first?
-        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",pingRequest->src);
+        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",myPack.src);
         // logPack(pingRequest,NEIGHBOR_CHANNEL);
-        mypingReply.dest = pingRequest->src;
-        mypingReply.seq = pingRequest->seq;
+        mypingReply.dest = myPack.src;
+        mypingReply.seq = myPack.seq;
         call pingSend.send(mypingReply,mypingReply.dest);
     }
-    
-    command void neighborDiscovery.handlePingReply(pack* pingReply){
-        dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",pingReply->src);
+
+    event void PacketHandler.gotPingRequest(pack* pingRequest){
+        memcpy(&myPack,pingRequest,28);
+        post respondtoPingRequest();
+    }
+    event void PacketHandler.gotflood(pack* _){}
+
+    task void addNeighbor(){
+        dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",myPack.src);
         // logPack(pingReply,NEIGHBOR_CHANNEL);
         // dbg(NEIGHBOR_CHANNEL,"Updating %hhu,%hhu in my list\n",pingReply->src,pingReply->seq);
-        call neighborhood.insert(pingReply->src,pingReply->seq);
+        call neighborhood.insert(myPack.src,myPack.seq);
     }
     
+    event void PacketHandler.gotPingReply(pack* pingReply){
+        memcpy(&myPack,pingReply,28);
+        post addNeighbor();
+    }
+
     command uint32_t* neighborDiscovery.getNeighbors(){
         return call neighborhood.getKeys();
     }
