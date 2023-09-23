@@ -52,6 +52,7 @@ implementation{
                 status=call neighborhood.get(myNeighbors[i]);
                 if(!status.recent){
                     status.quality = (1-decayRate)*status.quality;
+                    dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
                 }
                 if(status.quality<allowedQuality){
                     dbg(NEIGHBOR_CHANNEL,"Removing %d,%.4f from my list for being less than %.4f.\n",myNeighbors[i],status.quality,allowedQuality);
@@ -92,6 +93,7 @@ implementation{
         if(call neighborhood.contains(innerPack->src)){
             status = call neighborhood.get(innerPack->src);
             status.quality = decayRate+(1-decayRate)*status.quality;
+            // dbg(NEIGHBOR_CHANNEL,"Got pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
         }
         status.recent=TRUE;
         call neighborhood.insert(innerPack->src,status);
