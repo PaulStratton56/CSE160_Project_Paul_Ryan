@@ -1,3 +1,4 @@
+#include "../../includes/linkquality.h"
 
 configuration neighborDiscoveryC{
     provides interface neighborDiscovery;
@@ -13,7 +14,7 @@ implementation{
    components new TimerMilliC() as pingTimer;
    neighborDiscoveryP.pingTimer -> pingTimer;
 
-   components new HashmapC(uint16_t,32) as neighborhood;
+   components new HashmapC(linkquality,32) as neighborhood;
    neighborDiscoveryP.neighborhood -> neighborhood;
 
    components PacketHandlerC as PacketHandler;

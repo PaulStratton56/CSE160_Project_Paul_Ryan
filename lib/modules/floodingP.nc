@@ -51,7 +51,7 @@ implementation{
             }
         }
         else{
-            dbg(FLOODING_CHANNEL,"Already propagated %s. Duplicate came from %hhu\n",(char*) myWave.payload,myWave.prev_src);
+            dbg(FLOODING_CHANNEL,"Already propagated '%s'. Duplicate came from %hhu\n",(char*) myWave.payload,myWave.prev_src);
         }
     
         //use src for original source, dest for sender id, since dest doesn't matter for flooding

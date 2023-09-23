@@ -1,5 +1,6 @@
 #include "../../includes/packet.h"
 #include "../../includes/ndpack.h"
+#include "../../includes/linkquality.h"
 
 interface neighborDiscovery{
     command void onBoot();

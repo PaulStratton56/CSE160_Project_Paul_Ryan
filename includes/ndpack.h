@@ -17,4 +17,9 @@ typedef nx_struct ndpack{
 	nx_uint8_t payload[ND_PACKET_MAX_PAYLOAD_SIZE];
 }ndpack;
 
+void logNDpack(ndpack* input, char channel[]){
+	dbg(channel, "Src: %d | Seq: %d | Protocol: %d | Payload: %s\n",
+	input->src,input->seq,input->protocol,(char*) input->payload);
+}
+
 #endif

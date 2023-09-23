@@ -1,5 +1,6 @@
 #include "../../includes/packet.h"
 #include "../../includes/ndpack.h"
+#include "../../includes/linkquality.h"
 #include <string.h>
 #include <stdio.h>
 module neighborDiscoveryP{
@@ -7,7 +8,7 @@ module neighborDiscoveryP{
     
     uses interface SimpleSend as pingSend;
     uses interface Timer<TMilli> as pingTimer;
-    uses interface Hashmap<uint16_t> as neighborhood;
+    uses interface Hashmap<linkquality> as neighborhood;
     uses interface PacketHandler;
 }
 
@@ -16,12 +17,14 @@ implementation{
     pack mypingReply;
     pack myPack;
     uint32_t* myNeighbors;
+    float decayRate=.25;
+    float allowedQuality=.4;
     task void ping(){
         ndpack* innerPack = (ndpack*) myPing.payload;
         innerPack->seq += 1;
         dbg(NEIGHBOR_CHANNEL,"Hello? Who's There?\n");
         call pingSend.send(myPing,AM_BROADCAST_ADDR);
-        call pingTimer.startOneShot(2000);
+        call pingTimer.startOneShot(4000);
     }
 
     command void neighborDiscovery.onBoot(){
@@ -38,30 +41,35 @@ implementation{
         
         post ping();
     }
-
-    event void pingTimer.fired(){
+    task void updateLinks(){
         uint16_t i=0;
-        uint16_t seq;
-        uint8_t acceptableMisses=3;
+        linkquality status;
         uint16_t numNeighbors = call neighborhood.size();
         ndpack* innerPack = (ndpack*) myPing.payload;
-        myNeighbors = call neighborhood.getKeys(); 
-        //could do more analysis on data, especially if stored most recent data per node
-        //could do this with hashmap of linked list, using last k interactions 
-        //exponential importance model (more recent more important than a while ago)
+        myNeighbors = call neighborhood.getKeys();
         while(i<numNeighbors){
-            seq=call neighborhood.get(myNeighbors[i]);
-            if((call neighborhood.contains(myNeighbors[i])) && (innerPack->seq-seq)>acceptableMisses){
-                //if last seq was at least 6s, 
-                //conclude it is no longer a neighbor
-                dbg(NEIGHBOR_CHANNEL,"Removing %hhu,%hhu from my list for being older than %hhu.\n",myNeighbors[i],seq,innerPack->seq-acceptableMisses);
-                call neighborhood.remove(myNeighbors[i]);
-                numNeighbors -= 1;
-                i--;
+            if(call neighborhood.contains(myNeighbors[i])){
+                status=call neighborhood.get(myNeighbors[i]);
+                if(!status.recent){
+                    status.quality = (1-decayRate)*status.quality;
+                }
+                if(status.quality<allowedQuality){
+                    dbg(NEIGHBOR_CHANNEL,"Removing %d,%.4f from my list for being less than %.4f.\n",myNeighbors[i],status.quality,allowedQuality);
+                    call neighborhood.remove(myNeighbors[i]);
+                    numNeighbors -= 1;
+                    i--;
+                }
+                else{
+                    status.recent=FALSE;
+                    call neighborhood.insert(myNeighbors[i],status);
+                }
             }
             i++;
         }
         post ping();
+    }
+    event void pingTimer.fired(){
+        post updateLinks();
     }
 
     task void respondtoPingRequest(){
@@ -76,10 +84,17 @@ implementation{
 
     task void respondtoPingReply(){
         ndpack* innerPack = (ndpack*) myPack.payload;
+        linkquality status;
+        status.quality=1;
         dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",innerPack->src);
         // logPack(pingReply,NEIGHBOR_CHANNEL);
         // dbg(NEIGHBOR_CHANNEL,"Updating %hhu,%hhu in my list\n",pingReply->src,pingReply->seq);
-        call neighborhood.insert(innerPack->src,innerPack->seq);
+        if(call neighborhood.contains(innerPack->src)){
+            status = call neighborhood.get(innerPack->src);
+            status.quality = decayRate+(1-decayRate)*status.quality;
+        }
+        status.recent=TRUE;
+        call neighborhood.insert(innerPack->src,status);
     }
 
     event void PacketHandler.gotPing(uint8_t* packet){
@@ -105,7 +120,7 @@ implementation{
     command bool neighborDiscovery.excessNeighbors(){
         return call neighborhood.size()==call neighborhood.maxSize();
     }
-    command void neighborDiscovery.printMyNeighbors(){
+    command void neighborDiscovery.printMyNeighbors(){//yuck!
         uint16_t size = call neighborhood.size();
         char sNeighbor[] = "";
         char buffer[3*size];
