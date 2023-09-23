@@ -44,18 +44,19 @@ implementation{
         uint16_t seq;
         uint8_t acceptableMisses=3;
         uint16_t numNeighbors = call neighborhood.size();
+        ndpack* innerPack = (ndpack*) myPing.payload;
         myNeighbors = call neighborhood.getKeys(); 
         //could do more analysis on data, especially if stored most recent data per node
         //could do this with hashmap of linked list, using last k interactions 
         //exponential importance model (more recent more important than a while ago)
         while(i<numNeighbors){
-            ndpack* innerPack = (ndpack*) myPing.payload;
             seq=call neighborhood.get(myNeighbors[i]);
-            if((innerPack->seq-seq)>acceptableMisses){
+            if((call neighborhood.contains(myNeighbors[i])) && (innerPack->seq-seq)>acceptableMisses){
                 //if last seq was at least 6s, 
                 //conclude it is no longer a neighbor
-                dbg(NEIGHBOR_CHANNEL,"Removing %hhu,%hhu from my list for being older than %hhu.\n",myNeighbors[i],seq,myPing.seq-acceptableMisses);
+                dbg(NEIGHBOR_CHANNEL,"Removing %hhu,%hhu from my list for being older than %hhu.\n",myNeighbors[i],seq,innerPack->seq-acceptableMisses);
                 call neighborhood.remove(myNeighbors[i]);
+                numNeighbors -= 1;
                 i--;
             }
             i++;
@@ -64,8 +65,8 @@ implementation{
     }
 
     task void respondtoPingRequest(){
-        ndpack* innerReplyPack = (ndspack*) mypingReply.protocol;
-        ndpack* innerPack = (ndspack*) myPack.protocol;
+        ndpack* innerReplyPack = (ndpack*) mypingReply.payload;
+        ndpack* innerPack = (ndpack*) myPack.payload;
         
         dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",innerPack->src);
 
@@ -74,7 +75,7 @@ implementation{
     }
 
     task void respondtoPingReply(){
-        ndpack* innerPack = (ndspack*) myPack.protocol;
+        ndpack* innerPack = (ndpack*) myPack.payload;
         dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",innerPack->src);
         // logPack(pingReply,NEIGHBOR_CHANNEL);
         // dbg(NEIGHBOR_CHANNEL,"Updating %hhu,%hhu in my list\n",pingReply->src,pingReply->seq);
@@ -93,12 +94,7 @@ implementation{
         }
     }
 
-    event void PacketHandler.gotflood(pack* _){}
-    
-    event void PacketHandler.gotPingReply(pack* pingReply){
-        memcpy(&myPack,pingReply,28);
-        post addNeighbor();
-    }
+    event void PacketHandler.gotflood(uint8_t* _){}
 
     command uint32_t* neighborDiscovery.getNeighbors(){
         return call neighborhood.getKeys();
@@ -126,7 +122,7 @@ implementation{
             bufferIndex+=3;
         }
         buffer[bufferIndex-2]='\00';//dont need last , and space
-        dbg(FLOODING_CHANNEL,"My Neighbors are: %s\n",buffer);
+        dbg(NEIGHBOR_CHANNEL,"My Neighbors are: %s\n",buffer);
     }
 
     command error_t neighborDiscovery.makeNeighborPack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload){

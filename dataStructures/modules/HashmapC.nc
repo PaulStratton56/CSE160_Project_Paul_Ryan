@@ -83,7 +83,7 @@ implementation{
           // shifting all the values to the left. e.g. [1, 2, 3, 4, 0] key = 2
           // the new internal list would be [1, 3, 4, 0, 0];
          if(keys[i]==k){
-            dbg(HASHMAP_CHANNEL, "Key found at %d\n", i);
+            dbg(HASHMAP_CHANNEL, "Key %d found at %d\n", k, i);
 
             // Shift everything to the left.
             for(j=i; j<HASH_MAX_SIZE; j++){

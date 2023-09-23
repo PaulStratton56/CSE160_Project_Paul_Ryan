@@ -19,4 +19,9 @@ typedef nx_struct floodpack{
 	nx_uint8_t payload[FLOOD_PACKET_MAX_PAYLOAD_SIZE];
 }floodpack;
 
+void logFloodPack(floodpack *input, char channel[]){
+        dbg(channel, "os: %d | ps: %d | sq: %d | ttl: %d | pcl: %d | pl: %s\n",
+		input->original_src,input->prev_src,input->seq,input->ttl,input->protocol,(char*) input->payload);
+}
+
 #endif

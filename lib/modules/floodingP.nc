@@ -20,11 +20,14 @@ implementation{
         int i = 0;
         uint32_t* myNeighbors = call neighborhood.getNeighbors(); // Double-check memory ownership
         uint16_t numNeighbors = call neighborhood.numNeighbors();
+        uint16_t prevNode = myWave.prev_src;
+        myWave.prev_src = TOS_NODE_ID;
+        myWave.ttl -= 1;
         call waveSend.makePack(&wave,myWave.original_src,myWave.prev_src,myWave.ttl,PROTOCOL_FLOOD,myWave.seq,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         if(!call neighborhood.excessNeighbors()){
             for(i=0;i<numNeighbors;i++){
-                if(myNeighbors[i]!=(uint32_t)myWave.prev_src){
-                    dbg(FLOODING_CHANNEL,"Propagating Flood Message: '%s' sent to me by %d. Sending to %d\n", (char*) myWave.payload, myWave.prev_src, myNeighbors[i]);
+                if(myNeighbors[i]!=(uint32_t)prevNode){
+                    dbg(FLOODING_CHANNEL,"Propagating Flood Message: '%s' sent to me by %d. Sending to %d\n", (char*) myWave.payload, prevNode, myNeighbors[i]);
                     call waveSend.send(wave,myNeighbors[i]);
                 }
             }
@@ -41,8 +44,6 @@ implementation{
             call packets.insert(myWave.original_src,myWave.seq);
             if(myWave.ttl>0){
                 call neighborhood.printMyNeighbors();
-                myWave.prev_src = TOS_NODE_ID;
-                myWave.ttl -= 1;
                 broadsend();
             }
             else{
