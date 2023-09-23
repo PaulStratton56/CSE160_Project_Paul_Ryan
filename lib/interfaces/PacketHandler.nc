@@ -1,6 +1,5 @@
 interface PacketHandler{
     command error_t handle(pack* msg);
-    event void gotPingRequest(pack* incomingMsg);
-    event void gotPingReply(pack* incomingMsg);
-    event void gotflood(pack* incomingMsg);
+    event void gotPing(uint8_t* incomingMsg);
+    event void gotflood(uint8_t* incomingMsg);
 }
