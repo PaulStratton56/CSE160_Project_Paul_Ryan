@@ -22,6 +22,7 @@ implementation{
                 signal PacketHandler.gotflood(payload);
                 break;
         }  
+        dbg(HANDLER_CHANNEL, "Package Payload: %s\n", incomingMsg->payload);
         return SUCCESS;
     }
 

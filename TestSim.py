@@ -155,9 +155,9 @@ def main():
     s.runTime(10)
     # s.ping(1, 2, "Hello, World")
     # s.flood(1,"123456789.123456789.123456789.")#invalid length message
-    # s.flood(1,"Hi from 1!")
+    s.flood(1,"Hi from 1!")
     # s.runTime(10)
-    s.moteOff(4)
+    # s.moteOff(4)
     s.runTime(10)
     # s.flood(6,"Hi from 6!")
     # s.runTime(10)

@@ -56,10 +56,9 @@ implementation{
       if(len==sizeof(pack)){
          pack* incomingMsg=(pack*) payload;
          
-         dbg(HANDLER_CHANNEL, "Packet -> Handler");
+         dbg(GENERAL_CHANNEL, "Packet -> Handler");
          call PacketHandler.handle(incomingMsg);
 
-         dbg(HANDLER_CHANNEL, "Package Payload: %s\n", incomingMsg->payload);
          return msg;
       }
       dbg(HANDLER_CHANNEL, "Unknown Packet Type %d\n", len);

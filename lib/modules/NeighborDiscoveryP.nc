@@ -13,39 +13,36 @@ module neighborDiscoveryP{
 }
 
 implementation{
-    pack myPing;
-    pack mypingReply;
+    ndpack myPing;
+    ndpack mypingReply;
+    ndpack incomingNDpack;
     pack myPack;
     uint32_t* myNeighbors;
     float decayRate=.25;
     float allowedQuality=.4;
+
     task void ping(){
-        ndpack* innerPack = (ndpack*) myPing.payload;
-        innerPack->seq += 1;
+        myPing.seq += 1;
         dbg(NEIGHBOR_CHANNEL,"Hello? Who's There?\n");
-        call pingSend.send(myPing,AM_BROADCAST_ADDR);
+        call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,0,PROTOCOL_NEIGHBOR,myPing.seq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
+        call pingSend.send(myPack,AM_BROADCAST_ADDR);
         call pingTimer.startOneShot(4000);
     }
 
     command void neighborDiscovery.onBoot(){
-        ndpack innerSendPack;
-        ndpack innerReplyPack;
         char sendPayload[] = "Who's There?";
         char replyPayload[] = "I'm here!";
 
-        call neighborDiscovery.makeNeighborPack(&innerSendPack, TOS_NODE_ID, 0, PROTOCOL_PING, (uint8_t*) sendPayload);
-        call pingSend.makePack(&myPing, TOS_NODE_ID, AM_BROADCAST_ADDR, 0, PROTOCOL_NEIGHBOR, 0, (uint8_t*) &innerSendPack, PACKET_MAX_PAYLOAD_SIZE);
-
-        call neighborDiscovery.makeNeighborPack(&innerReplyPack, TOS_NODE_ID, 0, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
-        call pingSend.makePack(&mypingReply, TOS_NODE_ID, 0, 0, PROTOCOL_NEIGHBOR, 0, (uint8_t*) &innerReplyPack, PACKET_MAX_PAYLOAD_SIZE);
+        call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, 0, PROTOCOL_PING, (uint8_t*) sendPayload);
+        call neighborDiscovery.makeNeighborPack(&mypingReply, TOS_NODE_ID, 0, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
         
         post ping();
     }
+
     task void updateLinks(){
         uint16_t i=0;
         linkquality status;
         uint16_t numNeighbors = call neighborhood.size();
-        ndpack* innerPack = (ndpack*) myPing.payload;
         myNeighbors = call neighborhood.getKeys();
         while(i<numNeighbors){
             if(call neighborhood.contains(myNeighbors[i])){
@@ -69,41 +66,37 @@ implementation{
         }
         post ping();
     }
+    
     event void pingTimer.fired(){
         post updateLinks();
     }
 
-    task void respondtoPingRequest(){
-        ndpack* innerReplyPack = (ndpack*) mypingReply.payload;
-        ndpack* innerPack = (ndpack*) myPack.payload;
-        
-        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",innerPack->src);
+    task void respondtoPingRequest(){       
+        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",incomingNDpack.src);
 
-        innerReplyPack->seq = innerPack->seq;
-        call pingSend.send(mypingReply,innerPack->src);
+        mypingReply.seq = incomingNDpack.seq;
+        call pingSend.makePack(&myPack,TOS_NODE_ID,incomingNDpack.src,0,PROTOCOL_NEIGHBOR,mypingReply.seq,(uint8_t*) &mypingReply,PACKET_MAX_PAYLOAD_SIZE);
+        call pingSend.send(myPack,myPack.dest);
     }
 
     task void respondtoPingReply(){
-        ndpack* innerPack = (ndpack*) myPack.payload;
         linkquality status;
         status.quality=1;
-        dbg(NEIGHBOR_CHANNEL,"Handling Ping Reply from %hhu...\n",innerPack->src);
-        // logPack(pingReply,NEIGHBOR_CHANNEL);
-        // dbg(NEIGHBOR_CHANNEL,"Updating %hhu,%hhu in my list\n",pingReply->src,pingReply->seq);
-        if(call neighborhood.contains(innerPack->src)){
-            status = call neighborhood.get(innerPack->src);
+        if(call neighborhood.contains(incomingNDpack.src)){
+            status = call neighborhood.get(incomingNDpack.src);
             status.quality = decayRate+(1-decayRate)*status.quality;
-            // dbg(NEIGHBOR_CHANNEL,"Got pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
+            dbg(NEIGHBOR_CHANNEL,"Got ping reply from %d, quality is now %.4f\n",incomingNDpack.src,status.quality);
+        }
+        else{
+            dbg(NEIGHBOR_CHANNEL,"Adding new neighbor %hhu...\n",incomingNDpack.src);
         }
         status.recent=TRUE;
-        call neighborhood.insert(innerPack->src,status);
+        call neighborhood.insert(incomingNDpack.src,status);
     }
 
     event void PacketHandler.gotPing(uint8_t* packet){
-        ndpack* innerPack = (ndpack*) myPack.payload;
-        memcpy(innerPack,(ndpack*) packet,20);
-
-        if(innerPack->protocol == PROTOCOL_PING){
+        memcpy((uint8_t*) &incomingNDpack, packet,20);
+        if(incomingNDpack.protocol == PROTOCOL_PING){
             post respondtoPingRequest();
         }
         else{
