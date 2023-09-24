@@ -99,8 +99,11 @@ implementation{
         if(incomingNDpack.protocol == PROTOCOL_PING){
             post respondtoPingRequest();
         }
-        else{
+        else if(myPing.protocol == PROTOCOL_PINGREPLY){
             post respondtoPingReply();
+        }
+        else{
+            dbg(GENERAL_CHANNEL,"Packet Handler Error: Incorrectly received PROTOCOL_NEIGHBOR packet payload\n");
         }
     }
 
