@@ -22,11 +22,14 @@ implementation{
     task void ping(){
         char sendPayload[] = "Who's There?";
         mySeq += 1;
-        dbg(NEIGHBOR_CHANNEL,"Hello? Who's There?\n");
         call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, mySeq, PROTOCOL_PING, (uint8_t*) sendPayload);
         call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,0,PROTOCOL_NEIGHBOR,(uint16_t) mySeq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
+        
         call pingSend.send(myPack,AM_BROADCAST_ADDR);
+        
         call pingTimer.startOneShot(4000);
+
+        dbg(NEIGHBOR_CHANNEL,"Pinging Neighbors\n");
     }
 
     command void neighborDiscovery.onBoot(){
@@ -38,13 +41,16 @@ implementation{
         linkquality status;
         uint16_t numNeighbors = call neighborhood.size();
         uint32_t* myNeighbors = call neighborhood.getKeys();
+
         while(i<numNeighbors){
             if(call neighborhood.contains(myNeighbors[i])){
                 status=call neighborhood.get(myNeighbors[i]);
+
                 if(!status.recent){
-                    status.quality = (1-decayRate)*status.quality;
                     dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
+                    status.quality = (1-decayRate)*status.quality;
                 }
+
                 if(status.quality<allowedQuality){
                     dbg(NEIGHBOR_CHANNEL,"Removing %d,%.4f from my list for being less than %.4f.\n",myNeighbors[i],status.quality,allowedQuality);
                     call neighborhood.remove(myNeighbors[i]);
@@ -58,27 +64,30 @@ implementation{
             }
             i++;
         }
-        post ping();
     }
     
     event void pingTimer.fired(){
         post updateLinks();
+        post ping();
     }
 
     task void respondtoPingRequest(){       
         uint16_t dest = myPing.src;
         uint8_t seq = myPing.seq;
         char replyPayload[] = "I'm here!";
-        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",dest);
 
         call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
         call pingSend.makePack(&myPack,TOS_NODE_ID,dest,0,PROTOCOL_NEIGHBOR,(uint16_t) seq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
+
+        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",dest);
         call pingSend.send(myPack,myPack.dest);
     }
 
     task void respondtoPingReply(){
         linkquality status;
-        status.quality=1;
+
+        status.recent=TRUE;
+
         if(call neighborhood.contains(myPing.src)){
             status = call neighborhood.get(myPing.src);
             status.quality = decayRate+(1-decayRate)*status.quality;
@@ -86,13 +95,15 @@ implementation{
         }
         else{
             dbg(NEIGHBOR_CHANNEL,"Adding new neighbor %hhu...\n",myPing.src);
+            status.quality=1;
         }
-        status.recent=TRUE;
+
         call neighborhood.insert(myPing.src,status);
     }
 
     event void PacketHandler.gotPing(uint8_t* packet){
         memcpy(&myPing, packet,20);
+
         if(myPing.protocol == PROTOCOL_PING){
             post respondtoPingRequest();
         }
@@ -109,12 +120,15 @@ implementation{
     command uint32_t* neighborDiscovery.getNeighbors(){
         return call neighborhood.getKeys();
     }
+    
     command uint16_t neighborDiscovery.numNeighbors(){
         return call neighborhood.size();
     }
+
     command bool neighborDiscovery.excessNeighbors(){
         return call neighborhood.size()==call neighborhood.maxSize();
     }
+
     command void neighborDiscovery.printMyNeighbors(){//yuck!
         uint16_t size = call neighborhood.size();
         char sNeighbor[] = "";
@@ -123,6 +137,7 @@ implementation{
         int i=0;
         int bufferIndex=0;
         uint32_t* myNeighbors = call neighborhood.getKeys();
+
         for (i=0;i<size;i++){
             neighbor = myNeighbors[i];
             sprintf(sNeighbor,"%u", (unsigned int)neighbor);
@@ -132,6 +147,7 @@ implementation{
             bufferIndex+=3;
         }
         buffer[bufferIndex-2]='\00';//dont need last , and space
+        
         dbg(NEIGHBOR_CHANNEL,"My Neighbors are: %s\n",buffer);
     }
 

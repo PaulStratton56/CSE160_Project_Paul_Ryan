@@ -18,12 +18,15 @@ implementation{
     void broadsend(){
         pack wave;
         int i = 0;
-        uint32_t* myNeighbors = call neighborhood.getNeighbors(); // Double-check memory ownership
+        uint32_t* myNeighbors = call neighborhood.getNeighbors();
         uint16_t numNeighbors = call neighborhood.numNeighbors();
         uint16_t prevNode = myWave.prev_src;
+
         myWave.prev_src = TOS_NODE_ID;
         myWave.ttl -= 1;
+        
         call waveSend.makePack(&wave,myWave.original_src,myWave.prev_src,myWave.ttl,PROTOCOL_FLOOD,myWave.seq,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
+        
         if(!call neighborhood.excessNeighbors()){
             for(i=0;i<numNeighbors;i++){
                 if(myNeighbors[i]!=(uint32_t)prevNode){
@@ -42,6 +45,7 @@ implementation{
         //check if should forward packet
         if(!call packets.contains(myWave.original_src) || call packets.get(myWave.original_src)<myWave.seq){
             call packets.insert(myWave.original_src,myWave.seq);
+
             if(myWave.ttl>0){
                 call neighborhood.printMyNeighbors();
                 broadsend();
@@ -75,6 +79,7 @@ implementation{
         memcpy(&myWave,wave,20);
         post flood();
     }
+    
     event void PacketHandler.gotPing(uint8_t* _){}
 
 }
