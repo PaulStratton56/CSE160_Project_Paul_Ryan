@@ -77,7 +77,8 @@ implementation{
                 dbg(COMMAND_CHANNEL, "Command Type: Client\n");
                 signal CommandHandler.setTestServer();
                 break;
-            
+                
+            //A flood will only need a given string as a payload, since it broadcasts first.
             case CMD_FLOOD:
                 dbg(COMMAND_CHANNEL, "Command Type: Flood | Payload: %s\n",&buff[1]);
                 signal CommandHandler.flood(&buff[1]);

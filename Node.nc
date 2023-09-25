@@ -32,7 +32,6 @@ module Node{
 implementation{
    pack sendPackage;
    uint16_t floodSequence=0;
-   // Prototypes
 
    event void Boot.booted(){
       call AMControl.start();
@@ -42,7 +41,10 @@ implementation{
    event void AMControl.startDone(error_t err){
       if(err == SUCCESS){
          dbg(GENERAL_CHANNEL, "Radio On\n");
+
+         //When done booting, start the ND Ping timer.
          call nd.onBoot();
+
       }else{
          //Retry until successful
          call AMControl.start();
@@ -56,7 +58,8 @@ implementation{
       if(len==sizeof(pack)){
          pack* incomingMsg=(pack*) payload;
          
-         dbg(GENERAL_CHANNEL, "Packet -> Handler");
+         //Pass the packet off to a separate packet handler module.
+         dbg(HANDLER_CHANNEL, "Packet -> Handler");
          call PacketHandler.handle(incomingMsg);
 
          return msg;
@@ -72,12 +75,18 @@ implementation{
       call Sender.send(sendPackage, destination);
    }
 
+   //Command implementation of flooding
    event void CommandHandler.flood(uint8_t* payload){
       floodpack innerPack;
       dbg(GENERAL_CHANNEL, "FLOOD EVENT\n");
+
+      //Create a flood pack to send with given payload
       call flood.makeFloodPack(&innerPack, TOS_NODE_ID, TOS_NODE_ID, floodSequence++, 250, PROTOCOL_FLOOD, payload);
+
+      //Encapsulate pack in a SimpleSend packet and broadcast it!
       call Sender.makePack(&sendPackage,TOS_NODE_ID,AM_BROADCAST_ADDR,4,PROTOCOL_FLOOD,floodSequence,(uint8_t*) &innerPack,PACKET_MAX_PAYLOAD_SIZE);
       call Sender.send(sendPackage,AM_BROADCAST_ADDR);
+      
    }
    event void PacketHandler.gotPing(uint8_t* _){}
    event void PacketHandler.gotflood(uint8_t* _){}
