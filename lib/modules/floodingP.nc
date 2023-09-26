@@ -37,6 +37,9 @@ implementation{
         //Create a pack `wave` to send out using the myWave flood pack as a payload
         call waveSend.makePack(&wave,myWave.original_src,myWave.prev_src,myWave.ttl,PROTOCOL_FLOOD,myWave.seq,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         
+        /*
+        !!!potentially has memory issues cause hashmap is owned by ND module!!!
+        */
         if(!call neighborhood.excessNeighbors()){ //If we know all our neighbors...
             for(i=0;i<numNeighbors;i++){
                 if(myNeighbors[i]!=(uint32_t)prevNode){ //If the currently considered neighbor is not the previous source, propogate the wave to that node.
