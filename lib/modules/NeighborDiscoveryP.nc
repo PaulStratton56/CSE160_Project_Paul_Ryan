@@ -136,8 +136,6 @@ implementation{
     task void respondtoPingReply(){
         linkquality status;
         
-        //If a reply is inbound, mark that a reply was recently seen.
-        status.recent=TRUE;
 
         //If the link is known, increase the quality of that link (because a reply was found)
         if(call neighborhood.contains(myPing.src)){
@@ -151,6 +149,9 @@ implementation{
             status.quality=1;
         }
 
+        //If a reply is inbound, mark that a reply was recently seen.
+        status.recent=TRUE;
+        
         //Insert the updated link data into a table.
         call neighborhood.insert(myPing.src,status);
     }
