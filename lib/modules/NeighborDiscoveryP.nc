@@ -21,12 +21,22 @@ implementation{
                              //A quality below this value represents a 'too noisy' connection.
     uint8_t mySeq = 0; //Sequence of the broadcasted pings
 
+    /*
+    == ping() ==
+    Posted when the pingTimer fires.
+    Increases the sequence number.
+    Creates a packet to send out using NeighborDiscovery headers.
+    Restarts the pingTimer.
+    Broadcasts the ping.
+    */
     task void ping(){
         char sendPayload[] = "Who's There?";
+        //Increase the sequence number
         mySeq += 1;
+        //Create the outbound packet.
         call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, mySeq, PROTOCOL_PING, (uint8_t*) sendPayload);
         call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,0,PROTOCOL_NEIGHBOR,(uint16_t) mySeq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
-        
+        //
         call pingSend.send(myPack,AM_BROADCAST_ADDR);
         
         call pingTimer.startOneShot(4000);
@@ -34,6 +44,12 @@ implementation{
         dbg(NEIGHBOR_CHANNEL,"Pinging Neighbors\n");
     }
 
+    /*
+    == onBoot() ==
+    The first thing that runs in this module.
+    Called from Node.nc's "startDone" function.
+    Posts a ping task to start the timer and introduce a node to its neighbors.
+    */
     command void neighborDiscovery.onBoot(){
         post ping();
     }
@@ -75,6 +91,13 @@ implementation{
         }
     }
     
+    /*
+    == pingTimer.fired() ==
+    signaled when pingTimer expires.
+    Posts updateLinks and sends out a ping.
+    The ping() event also restarts this timer to create a loop.
+    (This may change to call the timer in the fired() event, depending on later issues.)
+    */
     event void pingTimer.fired(){
         post updateLinks();
         post ping();
@@ -104,6 +127,7 @@ implementation{
     */
     task void respondtoPingReply(){
         linkquality status;
+        
         status.recent=TRUE;
 
         if(call neighborhood.contains(myPing.src)){
@@ -117,40 +141,6 @@ implementation{
         }
 
         call neighborhood.insert(myPing.src,status);
-    }
-
-    /*
-    == onBoot() ==
-    The first thing that runs in this module.
-    Called from Node.nc's "startDone" function.
-    Sets up outgoing packets for ease of use later on.
-    Also posts a ping task to start the timer and introduce a node to its neighbors.
-    */
-    command void neighborDiscovery.onBoot(){
-        ndpack innerSendPack;
-        ndpack innerReplyPack;
-        char sendPayload[] = "Who's There?";
-        char replyPayload[] = "I'm here!";
-
-        call neighborDiscovery.makeNeighborPack(&innerSendPack, TOS_NODE_ID, 0, PROTOCOL_PING, (uint8_t*) sendPayload);
-        call pingSend.makePack(&myPing, TOS_NODE_ID, AM_BROADCAST_ADDR, 0, PROTOCOL_NEIGHBOR, 0, (uint8_t*) &innerSendPack, PACKET_MAX_PAYLOAD_SIZE);
-
-        call neighborDiscovery.makeNeighborPack(&innerReplyPack, TOS_NODE_ID, 0, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
-        call pingSend.makePack(&mypingReply, TOS_NODE_ID, 0, 0, PROTOCOL_NEIGHBOR, 0, (uint8_t*) &innerReplyPack, PACKET_MAX_PAYLOAD_SIZE);
-        
-        post ping();
-    }
-
-    /*
-    == pingTimer.fired() ==
-    signaled when pingTimer expires.
-    Posts updateLinks and sends out a ping.
-    The ping() event also restarts this timer to create a loop.
-    (This may change to call the timer in the fired() event, depending on later issues.)
-    */
-    event void pingTimer.fired(){
-        post updateLinks();
-        post ping();
     }
     
     /*
