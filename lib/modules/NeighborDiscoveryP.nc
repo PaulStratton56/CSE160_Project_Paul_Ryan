@@ -17,7 +17,7 @@ implementation{
     pack myPack; //Outer SimpleSend pack
     float decayRate=.25; //Alpha value of the exponentially weighted moving average reliability value for neighbors.
                          //Higher values place more emphasis on recent data.
-    float allowedQuality=.4; //Quality threshhold to consider a connection as valid.
+    float allowedQuality=.4; //Quality threshold to consider a connection as valid.
                              //A quality below this value represents a 'too noisy' connection.
     uint8_t mySeq = 0; //Sequence of the broadcasted pings
 
@@ -62,7 +62,7 @@ implementation{
     Posted when the sendTimer fires.
     Checks and updates the quality of connections to other nodes listed in a hash table.
     Uses an exponentially weighted moving average for the connection quality.
-    If quality falls below 'allowedQuality' threshhold, it is no longer considered as a neighbor.
+    If quality falls below 'allowedQuality' threshold, it is no longer considered as a neighbor.
     */
     task void updateLinks(){
         uint16_t i=0;
@@ -81,7 +81,7 @@ implementation{
                     status.quality = (1-decayRate)*status.quality;
                 }
 
-                //If the quality of a link is below a certain threshhold, remove it from the considered list of neighbors.
+                //If the quality of a link is below a certain threshold, remove it from the considered list of neighbors.
                 if(status.quality<allowedQuality){
                     dbg(NEIGHBOR_CHANNEL,"Removing %d,%.4f from my list for being less than %.4f.\n",myNeighbors[i],status.quality,allowedQuality);
                     call neighborhood.remove(myNeighbors[i]);
@@ -151,7 +151,7 @@ implementation{
 
         //If a reply is inbound, mark that a reply was recently seen.
         status.recent=TRUE;
-        
+
         //Insert the updated link data into a table.
         call neighborhood.insert(myPing.src,status);
     }

@@ -38,7 +38,7 @@ implementation{
         call waveSend.makePack(&wave,myWave.original_src,myWave.prev_src,myWave.ttl,PROTOCOL_FLOOD,myWave.seq,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         
         /*
-        !!!potentially has memory issues cause hashmap is owned by ND module!!!
+        !!!potentially has memory issues because hashmap is owned by ND module!!!
         */
         if(!call neighborhood.excessNeighbors()){ //If we know all our neighbors...
             for(i=0;i<numNeighbors;i++){
@@ -111,6 +111,7 @@ implementation{
     */
     event void PacketHandler.gotflood(uint8_t* wave){
         memcpy(&myWave,wave,20);
+        logFloodpack((floodpack*)wave, FLOODING_CHANNEL);
         post flood();
     }
 

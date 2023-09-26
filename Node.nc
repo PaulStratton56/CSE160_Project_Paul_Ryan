@@ -84,6 +84,7 @@ implementation{
       call flood.makeFloodPack(&innerPack, TOS_NODE_ID, TOS_NODE_ID, floodSequence++, 250, PROTOCOL_FLOOD, payload);
 
       //Encapsulate pack in a SimpleSend packet and broadcast it!
+      dbg(FLOODING_CHANNEL, "Flooding Network with payload: '%s'\n",(char*)payload);
       call Sender.makePack(&sendPackage,TOS_NODE_ID,AM_BROADCAST_ADDR,4,PROTOCOL_FLOOD,floodSequence,(uint8_t*) &innerPack,PACKET_MAX_PAYLOAD_SIZE);
       call Sender.send(sendPackage,AM_BROADCAST_ADDR);
       
