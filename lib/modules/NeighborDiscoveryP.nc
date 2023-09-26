@@ -21,6 +21,9 @@ implementation{
                              //A quality below this value represents a 'too noisy' connection.
     uint8_t mySeq = 0; //Sequence of the broadcasted pings
 
+
+    error_t makeNDpack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload);
+    
     /*
     == ping() ==
     Posted when the pingTimer fires.
@@ -36,7 +39,7 @@ implementation{
         mySeq += 1;
 
         //Create the outbound packet.
-        call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, mySeq, PROTOCOL_PING, (uint8_t*) sendPayload);
+        makeNDpack(&myPing, TOS_NODE_ID, mySeq, PROTOCOL_PING, (uint8_t*) sendPayload);
         call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,0,PROTOCOL_NEIGHBOR,(uint16_t) mySeq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
 
         //Send the packet using SimpleSend.
@@ -120,7 +123,7 @@ implementation{
         char replyPayload[] = "I'm here!";
 
         //To respond, create the pack to reply with.
-        call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
+        makeNDpack(&myPing, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
         call pingSend.makePack(&myPack,TOS_NODE_ID,dest,0,PROTOCOL_NEIGHBOR,(uint16_t) seq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
 
         //Then, send it.
@@ -227,7 +230,7 @@ implementation{
     protocol: Determines whether the packet is a request or a reply (to respond appropriately)
     payload: Contains a message or higher level packets.
     */
-    command error_t neighborDiscovery.makeNeighborPack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload){
+    error_t makeNDpack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload){
         packet->src = src;
         packet->seq = seq;
         packet->protocol = protocol;

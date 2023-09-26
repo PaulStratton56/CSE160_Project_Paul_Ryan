@@ -13,11 +13,21 @@
 
 implementation{
     //Define a static flood pack for later use
+    uint16_t floodSequence=0;
     floodpack myWave;
-
+    pack myPack;
     //Function prototype
-    void makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload);
+    error_t makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload);
     
+    //interface for another module initiating a flood
+    command void flooding.initiate(uint16_t ttl,uint8_t* payload){
+        floodSequence+=1;
+        makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, PROTOCOL_FLOOD, payload);
+        //Encapsulate pack in a SimpleSend packet and broadcast it!
+        call waveSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,ttl,PROTOCOL_FLOOD,floodSequence,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
+        call waveSend.send(myPack,AM_BROADCAST_ADDR);
+    }
+
     /*
     == broadsend() ==
     After an incoming packet is received and stored in myWave, 
@@ -63,10 +73,11 @@ implementation{
         //If the original source hasn't flooded a packet using this node yet,
         //OR the last packet seen by this node from the original source has an older sequence number, the message SHOULD send.
         if(!call packets.contains(myWave.original_src) || call packets.get(myWave.original_src)<myWave.seq){
-            //Update the hash table with the most recent sequence number.
-            call packets.insert(myWave.original_src,myWave.seq);
             //If the packet's TTL is still valid, broadsend the packet.
             if(myWave.ttl>0){
+                //Update the hash table with the most recent sequence number.
+                call packets.insert(myWave.original_src,myWave.seq);
+                
                 call neighborhood.printMyNeighbors();
                 broadsend();
             }
@@ -82,27 +93,6 @@ implementation{
     }
 
 
-    /*
-    == makeFloodPack(...) ==
-    Creates a pack containing all useful information for the Flooding module. 
-    Usually encapsulated in the payload of a SimpleSend packet, and passed by the packet handler.
-    packet: a referenced `floodpack` packet to fill.
-    o_src: Original source of the flood message (used to reply, etc.).
-    p_src: Previous source of the flood message (used to not propogate backwards, etc.)
-    seq: Sequence number of the packet (used to eliminate redundant packets, etc.)
-    ttl: Time to Live of the packet (used to eliminate eternal packets, etc.)
-    protocol: Determines whether the packet is a request or a reply (to respond appropriately)
-    payload: Contains a message or higher level packets.
-    */
-    command error_t flooding.makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload){
-        packet->original_src = o_src;
-        packet->prev_src = p_src;
-        packet->seq = seq;
-        packet->ttl = ttl;
-        packet->protocol = protocol;
-        memcpy(packet->payload, payload, FLOOD_PACKET_MAX_PAYLOAD_SIZE);
-        return SUCCESS;
-    }
 
     /*
     PacketHandler.gotflood(...)
@@ -118,4 +108,25 @@ implementation{
     //Used for NeighborDiscovery, disregard.
     event void PacketHandler.gotPing(uint8_t* _){}
 
+    /*
+    == makeFloodPack(...) ==
+    Creates a pack containing all useful information for the Flooding module. 
+    Usually encapsulated in the payload of a SimpleSend packet, and passed by the packet handler.
+    packet: a referenced `floodpack` packet to fill.
+    o_src: Original source of the flood message (used to reply, etc.).
+    p_src: Previous source of the flood message (used to not propogate backwards, etc.)
+    seq: Sequence number of the packet (used to eliminate redundant packets, etc.)
+    ttl: Time to Live of the packet (used to eliminate eternal packets, etc.)
+    protocol: Determines whether the packet is a request or a reply (to respond appropriately)
+    payload: Contains a message or higher level packets.
+    */
+    error_t makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload){
+        packet->original_src = o_src;
+        packet->prev_src = p_src;
+        packet->seq = seq;
+        packet->ttl = ttl;
+        packet->protocol = protocol;
+        memcpy(packet->payload, payload, FLOOD_PACKET_MAX_PAYLOAD_SIZE);
+        return SUCCESS;
+    }
 }
