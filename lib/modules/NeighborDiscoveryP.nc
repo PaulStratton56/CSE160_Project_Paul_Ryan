@@ -31,17 +31,20 @@ implementation{
     */
     task void ping(){
         char sendPayload[] = "Who's There?";
-        //Increase the sequence number
+
+        //Increase the sequence number.
         mySeq += 1;
+
         //Create the outbound packet.
         call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, mySeq, PROTOCOL_PING, (uint8_t*) sendPayload);
         call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,0,PROTOCOL_NEIGHBOR,(uint16_t) mySeq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
-        //
-        call pingSend.send(myPack,AM_BROADCAST_ADDR);
-        
-        call pingTimer.startOneShot(4000);
 
-        dbg(NEIGHBOR_CHANNEL,"Pinging Neighbors\n");
+        //Send the packet using SimpleSend.
+        dbg(NEIGHBOR_CHANNEL,"Pinged Neighbors\n");
+        call pingSend.send(myPack,AM_BROADCAST_ADDR);
+
+        //Restart the timer.
+        call pingTimer.startOneShot(4000);
     }
 
     /*
@@ -67,15 +70,18 @@ implementation{
         uint16_t numNeighbors = call neighborhood.size();
         uint32_t* myNeighbors = call neighborhood.getKeys();
 
+        //Loop through each neighbor and update link quality value.
         while(i<numNeighbors){
             if(call neighborhood.contains(myNeighbors[i])){
                 status=call neighborhood.get(myNeighbors[i]);
 
+                //If the expected reply packet from a node did not show up, decrease the quality of the link.
                 if(!status.recent){
                     dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
                     status.quality = (1-decayRate)*status.quality;
                 }
 
+                //If the quality of a link is below a certain threshhold, remove it from the considered list of neighbors.
                 if(status.quality<allowedQuality){
                     dbg(NEIGHBOR_CHANNEL,"Removing %d,%.4f from my list for being less than %.4f.\n",myNeighbors[i],status.quality,allowedQuality);
                     call neighborhood.remove(myNeighbors[i]);
@@ -108,14 +114,16 @@ implementation{
     Task to handle a neighbor ping from another node.
     Sends a pack back with the sequence number of the incoming pack.
     */
-    task void respondtoPingRequest(){       
+    task void respondtoPingRequest(){
         uint16_t dest = myPing.src;
         uint8_t seq = myPing.seq;
         char replyPayload[] = "I'm here!";
 
+        //To respond, create the pack to reply with.
         call neighborDiscovery.makeNeighborPack(&myPing, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
         call pingSend.makePack(&myPack,TOS_NODE_ID,dest,0,PROTOCOL_NEIGHBOR,(uint16_t) seq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
 
+        //Then, send it.
         dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",dest);
         call pingSend.send(myPack,myPack.dest);
     }
@@ -128,18 +136,22 @@ implementation{
     task void respondtoPingReply(){
         linkquality status;
         
+        //If a reply is inbound, mark that a reply was recently seen.
         status.recent=TRUE;
 
+        //If the link is known, increase the quality of that link (because a reply was found)
         if(call neighborhood.contains(myPing.src)){
             status = call neighborhood.get(myPing.src);
             status.quality = decayRate+(1-decayRate)*status.quality;
             dbg(NEIGHBOR_CHANNEL,"Got ping reply from %d, quality is now %.4f\n",myPing.src,status.quality);
         }
+        //Otherwise, the link is new, so assume it's a perfect link.
         else{
             dbg(NEIGHBOR_CHANNEL,"Adding new neighbor %hhu...\n",myPing.src);
             status.quality=1;
         }
 
+        //Insert the updated link data into a table.
         call neighborhood.insert(myPing.src,status);
     }
     
@@ -152,6 +164,7 @@ implementation{
     event void PacketHandler.gotPing(uint8_t* packet){
         memcpy(&myPing, packet,20);
 
+        //Using the inner packet protocol of the inbound packet, determine whether it is a ping or a reply, and respond appropriately.
         if(myPing.protocol == PROTOCOL_PING){
             post respondtoPingRequest();
         }
@@ -180,6 +193,7 @@ implementation{
 
     //printMyNeighbors() prints a list of neighbors to the debug console.
     command void neighborDiscovery.printMyNeighbors(){//yuck!
+        //Note: DOES NOT WORK FOR MULTI-DIGIT NODES
         uint16_t size = call neighborhood.size();
         char sNeighbor[] = "";
         char buffer[3*size];
@@ -188,6 +202,7 @@ implementation{
         int bufferIndex=0;
         uint32_t* myNeighbors = call neighborhood.getKeys();
 
+        //Manually manipulate the buffer string to print what is needed.
         for (i=0;i<size;i++){
             neighbor = myNeighbors[i];
             sprintf(sNeighbor,"%u", (unsigned int)neighbor);
