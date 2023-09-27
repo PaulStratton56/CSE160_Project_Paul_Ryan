@@ -80,8 +80,8 @@ implementation{
 
                 //If the expected reply packet from a node did not show up, decrease the quality of the link.
                 if(!status.recent){
-                    dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
                     status.quality = (1-decayRate)*status.quality;
+                    dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
                 }
 
                 //If the quality of a link is below a certain threshold, remove it from the considered list of neighbors.
