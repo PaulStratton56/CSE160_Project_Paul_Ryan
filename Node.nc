@@ -73,13 +73,15 @@ implementation{
       call Sender.send(sendPackage, destination);
    }
 
+   event void PacketHandler.gotPing(uint8_t* _){}
+   event void PacketHandler.gotflood(uint8_t* _){}
+   
+   event void nd.neighborUpdate(){}
    //Command implementation of flooding
    event void CommandHandler.flood(uint8_t* payload){
       dbg(GENERAL_CHANNEL, "FLOOD EVENT\n");
       call flood.initiate(250,payload);  
    }
-   event void PacketHandler.gotPing(uint8_t* _){}
-   event void PacketHandler.gotflood(uint8_t* _){}
    
    event void CommandHandler.printNeighbors(){}
 

@@ -17,20 +17,20 @@ implementation{
     pack myPack; //Outer SimpleSend pack
     float decayRate=.25; //Alpha value of the exponentially weighted moving average reliability value for neighbors.
                          //Higher values place more emphasis on recent data.
-    float allowedQuality=.4; //Quality threshold to consider a connection as valid.
+    uint8_t allowedQuality=100; //Quality threshold to consider a connection as valid.
                              //A quality below this value represents a 'too noisy' connection.
+    uint8_t maxQuality = 255;
     uint8_t mySeq = 0; //Sequence of the broadcasted pings
 
 
     error_t makeNDpack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload);
     
-    /*
-    == ping() ==
-    Posted when the pingTimer fires.
-    Increases the sequence number.
-    Creates a packet to send out using NeighborDiscovery headers.
-    Restarts the pingTimer.
-    Broadcasts the ping.
+    /*== ping() ==
+        Posted when the pingTimer fires.
+        Increases the sequence number.
+        Creates a packet to send out using NeighborDiscovery headers.
+        Restarts the pingTimer.
+        Broadcasts the ping.
     */
     task void ping(){
         char sendPayload[] = "Who's There?";
@@ -50,22 +50,20 @@ implementation{
         call pingTimer.startOneShot(4000);
     }
 
-    /*
-    == onBoot() ==
-    The first thing that runs in this module.
-    Called from Node.nc's "startDone" function.
-    Posts a ping task to start the timer and introduce a node to its neighbors.
+    /*== onBoot() ==
+        The first thing that runs in this module.
+        Called from Node.nc's "startDone" function.
+        Posts a ping task to start the timer and introduce a node to its neighbors.
     */
     command void neighborDiscovery.onBoot(){
         post ping();
     }
 
-    /*
-    == updateLinks() ==
-    Posted when the sendTimer fires.
-    Checks and updates the quality of connections to other nodes listed in a hash table.
-    Uses an exponentially weighted moving average for the connection quality.
-    If quality falls below 'allowedQuality' threshold, it is no longer considered as a neighbor.
+    /*== updateLinks() ==
+        Posted when the sendTimer fires.
+        Checks and updates the quality of connections to other nodes listed in a hash table.
+        Uses an exponentially weighted moving average for the connection quality.
+        If quality falls below 'allowedQuality' threshold, it is no longer considered as a neighbor.
     */
     task void updateLinks(){
         uint16_t i=0;
@@ -80,14 +78,15 @@ implementation{
 
                 //If the expected reply packet from a node did not show up, decrease the quality of the link.
                 if(!status.recent){
-                    dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %.4f\n",myNeighbors[i],status.quality);
-                    status.quality = (1-decayRate)*status.quality;
+                    status.quality = (uint8_t)((1-decayRate)*status.quality);
+                    dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %d\n",myNeighbors[i],status.quality);
                 }
 
                 //If the quality of a link is below a certain threshold, remove it from the considered list of neighbors.
                 if(status.quality<allowedQuality){
-                    dbg(NEIGHBOR_CHANNEL,"Removing %d,%.4f from my list for being less than %.4f.\n",myNeighbors[i],status.quality,allowedQuality);
+                    dbg(NEIGHBOR_CHANNEL,"Removing %d,%d from my list for being less than %d.\n",myNeighbors[i],status.quality,allowedQuality);
                     call neighborhood.remove(myNeighbors[i]);
+                    signal neighborDiscovery.neighborUpdate();
                     numNeighbors -= 1;
                     i--;
                 }
@@ -100,22 +99,20 @@ implementation{
         }
     }
     
-    /*
-    == pingTimer.fired() ==
-    signaled when pingTimer expires.
-    Posts updateLinks and sends out a ping.
-    The ping() event also restarts this timer to create a loop.
-    (This may change to call the timer in the fired() event, depending on later issues.)
+    /*== pingTimer.fired() ==
+        signaled when pingTimer expires.
+        Posts updateLinks and sends out a ping.
+        The ping() event also restarts this timer to create a loop.
+        (This may change to call the timer in the fired() event, depending on later issues.)
     */
     event void pingTimer.fired(){
         post updateLinks();
         post ping();
     }
 
-    /*
-    == respondtoPingRequest() ==
-    Task to handle a neighbor ping from another node.
-    Sends a pack back with the sequence number of the incoming pack.
+    /*== respondtoPingRequest() ==
+        Task to handle a neighbor ping from another node.
+        Sends a pack back with the sequence number of the incoming pack.
     */
     task void respondtoPingRequest(){
         uint16_t dest = myPing.src;
@@ -131,25 +128,24 @@ implementation{
         call pingSend.send(myPack,myPack.dest);
     }
 
-    /*
-    == respondtoPingReply() ==
-    Task to handle a response to a ping.
-    Increases the stored quality of a connection, and updates the status of incoming packets as recent (not dropped).
+    /*== respondtoPingReply() ==
+        Task to handle a response to a ping.
+        Increases the stored quality of a connection, and updates the status of incoming packets as recent (not dropped).
     */
     task void respondtoPingReply(){
         linkquality status;
-        
 
         //If the link is known, increase the quality of that link (because a reply was found)
         if(call neighborhood.contains(myPing.src)){
             status = call neighborhood.get(myPing.src);
-            status.quality = decayRate+(1-decayRate)*status.quality;
-            dbg(NEIGHBOR_CHANNEL,"Got ping reply from %d, quality is now %.4f\n",myPing.src,status.quality);
+            status.quality = (uint8_t)(maxQuality*decayRate) + (uint8_t)((1-decayRate)*status.quality);
+            dbg(NEIGHBOR_CHANNEL,"Got ping reply from %d, quality is now %d\n",myPing.src,status.quality);
         }
         //Otherwise, the link is new, so assume it's a perfect link.
         else{
             dbg(NEIGHBOR_CHANNEL,"Adding new neighbor %hhu...\n",myPing.src);
-            status.quality=1;
+            signal neighborDiscovery.neighborUpdate();
+            status.quality=maxQuality;
         }
 
         //If a reply is inbound, mark that a reply was recently seen.
@@ -159,14 +155,13 @@ implementation{
         call neighborhood.insert(myPing.src,status);
     }
     
-    /*
-    == PacketHandler.gotPing() ==
-    Signaled from the PacketHandler module when receiving an incoming NeighborDiscovery packet.
-    Checks the protocol of the ndpack previously stored in the SimpleSend pack, and responds appropriately.
-    Also copies the pack into NeighborDiscovery memory to prevent data loss.
+    /*== PacketHandler.gotPing() ==
+        Signaled from the PacketHandler module when receiving an incoming NeighborDiscovery packet.
+        Checks the protocol of the ndpack previously stored in the SimpleSend pack, and responds appropriately.
+        Also copies the pack into NeighborDiscovery memory to prevent data loss.
     */
-    event void PacketHandler.gotPing(uint8_t* packet){
-        memcpy(&myPing, packet,20);
+    event void PacketHandler.gotPing(uint8_t* payload){
+        memcpy(&myPing, payload,20);
 
         //Using the inner packet protocol of the inbound packet, determine whether it is a ping or a reply, and respond appropriately.
         if(myPing.protocol == PROTOCOL_PING){
@@ -220,15 +215,14 @@ implementation{
         dbg(NEIGHBOR_CHANNEL,"My Neighbors are: %s\n",buffer);
     }
 
-    /*
-    == makeNeighborPack(...) ==
-    Creates a pack containing all useful information for the NeighborDiscovery module. 
-    Usually encapsulated in the payload of a SimpleSend packet, and passed by the packet handler.
-    packet: a referenced `ndpack` packet to fill.
-    src: The source of the packet (used to reply, etc.)
-    seq: The sequence number of the packet (used for statistics, etc.)
-    protocol: Determines whether the packet is a request or a reply (to respond appropriately)
-    payload: Contains a message or higher level packets.
+    /*== makeNeighborPack(...) ==
+        Creates a pack containing all useful information for the NeighborDiscovery module. 
+        Usually encapsulated in the payload of a SimpleSend packet, and passed by the packet handler.
+        packet: a referenced `ndpack` packet to fill.
+        src: The source of the packet (used to reply, etc.)
+        seq: The sequence number of the packet (used for statistics, etc.)
+        protocol: Determines whether the packet is a request or a reply (to respond appropriately)
+        payload: Contains a message or higher level packets.
     */
     error_t makeNDpack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload){
         packet->src = src;

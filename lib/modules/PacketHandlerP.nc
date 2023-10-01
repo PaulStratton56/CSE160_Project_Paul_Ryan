@@ -11,8 +11,6 @@ Takes an incoming 'pack' and checks protocol to signal to higher level modules.
 module PacketHandlerP{
     provides interface PacketHandler;
 
-    uses interface neighborDiscovery as nd;
-    uses interface flooding as flood;
 }
 
 implementation{
