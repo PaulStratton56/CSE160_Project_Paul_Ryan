@@ -28,10 +28,9 @@ implementation{
         call waveSend.send(myPack,AM_BROADCAST_ADDR);
     }
 
-    /*
-    == broadsend() ==
-    After an incoming packet is received and stored in myWave, 
-    broadcasts a packet to all neighbors EXCEPT the source of the incoming packet.
+    /*== broadsend() ==
+        After an incoming packet is received and stored in myWave, 
+        broadcasts a packet to all neighbors EXCEPT the source of the incoming packet.
     */
     void broadsend(){
         pack wave;
@@ -64,10 +63,9 @@ implementation{
         }
     }
 
-    /*
-    == flood() ==
-    Task to check if flooding of an incoming packet is necessary. 
-    If so, call broadsend to propogate flooding message.
+    /*== flood() ==
+        Task to check if flooding of an incoming packet is necessary. 
+        If so, call broadsend to propogate flooding message.
     */
     task void flood(){
         //If the original source hasn't flooded a packet using this node yet,
@@ -92,12 +90,13 @@ implementation{
         }
     }
 
+    event void neighborhood.neighborUpdate(){
+        dbg(FLOODING_CHANNEL,"Update to table!");
+    }
 
-
-    /*
-    PacketHandler.gotflood(...)
-    signaled from the PacketHandler module when a node receives an incoming flood packet.
-    Copies the packet into memory and then posts the flood task for implementation of flooding.
+    /*==PacketHandler.gotflood(...)==
+        signaled from the PacketHandler module when a node receives an incoming flood packet.
+        Copies the packet into memory and then posts the flood task for implementation of flooding.
     */
     event void PacketHandler.gotflood(uint8_t* wave){
         memcpy(&myWave,wave,20);
@@ -108,17 +107,16 @@ implementation{
     //Used for NeighborDiscovery, disregard.
     event void PacketHandler.gotPing(uint8_t* _){}
 
-    /*
-    == makeFloodPack(...) ==
-    Creates a pack containing all useful information for the Flooding module. 
-    Usually encapsulated in the payload of a SimpleSend packet, and passed by the packet handler.
-    packet: a referenced `floodpack` packet to fill.
-    o_src: Original source of the flood message (used to reply, etc.).
-    p_src: Previous source of the flood message (used to not propogate backwards, etc.)
-    seq: Sequence number of the packet (used to eliminate redundant packets, etc.)
-    ttl: Time to Live of the packet (used to eliminate eternal packets, etc.)
-    protocol: Determines whether the packet is a request or a reply (to respond appropriately)
-    payload: Contains a message or higher level packets.
+    /*== makeFloodPack(...) ==
+        Creates a pack containing all useful information for the Flooding module. 
+        Usually encapsulated in the payload of a SimpleSend packet, and passed by the packet handler.
+        packet: a referenced `floodpack` packet to fill.
+        o_src: Original source of the flood message (used to reply, etc.).
+        p_src: Previous source of the flood message (used to not propogate backwards, etc.)
+        seq: Sequence number of the packet (used to eliminate redundant packets, etc.)
+        ttl: Time to Live of the packet (used to eliminate eternal packets, etc.)
+        protocol: Determines whether the packet is a request or a reply (to respond appropriately)
+        payload: Contains a message or higher level packets.
     */
     error_t makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload){
         packet->original_src = o_src;

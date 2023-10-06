@@ -9,7 +9,7 @@ If this falls below allowedQuality in NeighborDiscoveryP, the link is too unreli
 Recent: bool representing whether an incoming packet is recent or not (used to update reliability, etc.).
 */
 typedef struct linkquality{
-    float quality;
+    uint8_t quality;
 	bool recent;
 }linkquality;
 
