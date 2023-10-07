@@ -24,7 +24,7 @@ implementation{
         floodSequence+=1;
         makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, PROTOCOL_FLOOD, payload);
         //Encapsulate pack in a SimpleSend packet and broadcast it!
-        call waveSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,ttl,PROTOCOL_FLOOD,floodSequence,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
+        call waveSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,PROTOCOL_FLOOD,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         call waveSend.send(myPack,AM_BROADCAST_ADDR);
     }
 
@@ -44,7 +44,7 @@ implementation{
         myWave.prev_src = TOS_NODE_ID;
         myWave.ttl -= 1;
         //Create a pack `wave` to send out using the myWave flood pack as a payload
-        call waveSend.makePack(&wave,myWave.original_src,myWave.prev_src,myWave.ttl,PROTOCOL_FLOOD,myWave.seq,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
+        call waveSend.makePack(&wave,myWave.original_src,myWave.prev_src,PROTOCOL_FLOOD,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         
         /*
         !!!potentially has memory issues because hashmap is owned by ND module!!!
@@ -99,7 +99,7 @@ implementation{
         Copies the packet into memory and then posts the flood task for implementation of flooding.
     */
     event void PacketHandler.gotflood(uint8_t* wave){
-        memcpy(&myWave,wave,20);
+        memcpy(&myWave,wave,FLOOD_PACKET_SIZE);
         logFloodpack((floodpack*)wave, FLOODING_CHANNEL);
         post flood();
     }

@@ -40,7 +40,7 @@ implementation{
 
         //Create the outbound packet.
         makeNDpack(&myPing, TOS_NODE_ID, mySeq, PROTOCOL_PING, (uint8_t*) sendPayload);
-        call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,0,PROTOCOL_NEIGHBOR,(uint16_t) mySeq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
+        call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,PROTOCOL_NEIGHBOR,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
 
         //Send the packet using SimpleSend.
         dbg(NEIGHBOR_CHANNEL,"Pinged Neighbors\n");
@@ -121,7 +121,7 @@ implementation{
 
         //To respond, create the pack to reply with.
         makeNDpack(&myPing, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
-        call pingSend.makePack(&myPack,TOS_NODE_ID,dest,0,PROTOCOL_NEIGHBOR,(uint16_t) seq,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
+        call pingSend.makePack(&myPack,TOS_NODE_ID,dest,PROTOCOL_NEIGHBOR,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
 
         //Then, send it.
         dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",dest);
@@ -161,7 +161,7 @@ implementation{
         Also copies the pack into NeighborDiscovery memory to prevent data loss.
     */
     event void PacketHandler.gotPing(uint8_t* payload){
-        memcpy(&myPing, payload,20);
+        memcpy(&myPing, payload,ND_PACKET_SIZE);
 
         //Using the inner packet protocol of the inbound packet, determine whether it is a ping or a reply, and respond appropriately.
         if(myPing.protocol == PROTOCOL_PING){
