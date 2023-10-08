@@ -146,8 +146,8 @@ def main():
     s = TestSim()
 
     # s.loadTopo("long_line.topo")
-    s.loadTopo("smalltopo.topo")
-    # s.loadTopo("example.topo")
+    # s.loadTopo("smalltopo.topo")
+    s.loadTopo("example.topo")
 
     s.loadNoise("no_noise.txt")
 
@@ -160,7 +160,7 @@ def main():
     s.addChannel(s.FLOODING_CHANNEL)
     
     print("\n\n============================\n          FLOODING          \n============================\n\n")
-    s.flood(1, "12345678901234567890")#to check length of flooded message
+    s.flood(6, "12345678901234567890123")#to check length of flooded message
     s.runTime(1)
     print("\n\n==============================================================\n          NEIGHBOR DISCOVERY (Starts Partway Through)          \n==============================================================\n\n")
     s.addChannel(s.NEIGHBOR_CHANNEL)                                                

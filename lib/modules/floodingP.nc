@@ -33,7 +33,6 @@ implementation{
         broadcasts a packet to all neighbors EXCEPT the source of the incoming packet.
     */
     void broadsend(){
-        pack wave;
         int i = 0;
         //Get and store neighbors & the number of neighbors
         uint32_t* myNeighbors = call neighborhood.getNeighbors();
@@ -44,7 +43,7 @@ implementation{
         myWave.prev_src = TOS_NODE_ID;
         myWave.ttl -= 1;
         //Create a pack `wave` to send out using the myWave flood pack as a payload
-        call waveSend.makePack(&wave,myWave.original_src,myWave.prev_src,PROTOCOL_FLOOD,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
+        call waveSend.makePack(&myPack,myWave.original_src,myWave.prev_src,PROTOCOL_FLOOD,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         
         /*
         !!!potentially has memory issues because hashmap is owned by ND module!!!
@@ -52,14 +51,18 @@ implementation{
         if(!call neighborhood.excessNeighbors()){ //If we know all our neighbors...
             for(i=0;i<numNeighbors;i++){
                 if(myNeighbors[i]!=(uint32_t)prevNode){ //If the currently considered neighbor is not the previous source, propogate the wave to that node.
-                    dbg(FLOODING_CHANNEL,"Propagating Flood Message: '%s' sent to me by %d. Sending to %d\n", (char*) myWave.payload, prevNode, myNeighbors[i]);
-                    call waveSend.send(wave,myNeighbors[i]);
+                    
+                    char* payload_message = (char*) myWave.payload;
+                    payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
+                    dbg(FLOODING_CHANNEL,"Propagating Flood Message: '%s' sent to me by %d. Sending to %d\n", payload_message, prevNode, myNeighbors[i]);
+                    
+                    call waveSend.send(myPack,myNeighbors[i]);
                 }
             }
         }
         else{ //If the table is full, there may be unknown neighbors! So broadcast as a safety measure (Less optimal, but still works).
             dbg(FLOODING_CHANNEL,"Max Neighbors, so broadcasting flood wave...\n");
-            call waveSend.send(wave,AM_BROADCAST_ADDR);
+            call waveSend.send(myPack,AM_BROADCAST_ADDR);
         }
     }
 
@@ -91,7 +94,7 @@ implementation{
     }
 
     event void neighborhood.neighborUpdate(){
-        dbg(FLOODING_CHANNEL,"Update to table!");
+        // dbg(FLOODING_CHANNEL,"Update to table!\n");
     }
 
     /*==PacketHandler.gotflood(...)==

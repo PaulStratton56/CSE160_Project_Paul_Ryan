@@ -20,10 +20,10 @@ implementation{
     uint8_t allowedQuality=100; //Quality threshold to consider a connection as valid.
                              //A quality below this value represents a 'too noisy' connection.
     uint8_t maxQuality = 255;
-    uint8_t mySeq = 0; //Sequence of the broadcasted pings
+    uint16_t mySeq = 0; //Sequence of the broadcasted pings
 
 
-    error_t makeNDpack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload);
+    error_t makeNDpack(ndpack* packet, uint8_t src, uint16_t seq, uint8_t protocol, uint8_t* payload);
     
     /*== ping() ==
         Posted when the pingTimer fires.
@@ -33,7 +33,7 @@ implementation{
         Broadcasts the ping.
     */
     task void ping(){
-        char sendPayload[] = "Who's There?";
+        char sendPayload[] = "12345678901234567890123";//to check length of payload
 
         //Increase the sequence number.
         mySeq += 1;
@@ -44,6 +44,7 @@ implementation{
 
         //Send the packet using SimpleSend.
         dbg(NEIGHBOR_CHANNEL,"Pinged Neighbors\n");
+        // logNDpack(&myPing,NEIGHBOR_CHANNEL);
         call pingSend.send(myPack,AM_BROADCAST_ADDR);
 
         //Restart the timer.
@@ -115,8 +116,8 @@ implementation{
         Sends a pack back with the sequence number of the incoming pack.
     */
     task void respondtoPingRequest(){
-        uint16_t dest = myPing.src;
-        uint8_t seq = myPing.seq;
+        uint8_t dest = myPing.src;
+        uint16_t seq = myPing.seq;
         char replyPayload[] = "I'm here!";
 
         //To respond, create the pack to reply with.
@@ -224,7 +225,7 @@ implementation{
         protocol: Determines whether the packet is a request or a reply (to respond appropriately)
         payload: Contains a message or higher level packets.
     */
-    error_t makeNDpack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload){
+    error_t makeNDpack(ndpack* packet, uint8_t src, uint16_t seq, uint8_t protocol, uint8_t* payload){
         packet->src = src;
         packet->seq = seq;
         packet->protocol = protocol;

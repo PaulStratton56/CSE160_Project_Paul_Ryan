@@ -4,9 +4,9 @@
 #include "packet.h"
 
 enum{
-	ND_PACKET_HEADER_LENGTH = 5,
-	ND_PACKET_SIZE = PACKET_MAX_PAYLOAD_SIZE, //23
-	ND_PACKET_MAX_PAYLOAD_SIZE = ND_PACKET_SIZE - ND_PACKET_HEADER_LENGTH,//18
+	ND_PACKET_HEADER_LENGTH = 4,
+	ND_PACKET_SIZE = PACKET_MAX_PAYLOAD_SIZE, //25
+	ND_PACKET_MAX_PAYLOAD_SIZE = ND_PACKET_SIZE - ND_PACKET_HEADER_LENGTH,//21
 };
 
 /*
@@ -19,7 +19,7 @@ protocol: Determines whether the packet is a ping or a reply (to respond appropr
 payload: Contains a message or higher level packets.
 */
 typedef nx_struct ndpack{
-	nx_uint16_t src;
+	nx_uint8_t src;
 	nx_uint16_t seq;
 	nx_uint8_t protocol;
 	nx_uint8_t payload[ND_PACKET_MAX_PAYLOAD_SIZE];

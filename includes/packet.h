@@ -10,14 +10,14 @@
 #include "channels.h"
 
 enum{
-	PACKET_HEADER_LENGTH = 5,
-	PACKET_MAX_PAYLOAD_SIZE = 28 - PACKET_HEADER_LENGTH //23
+	PACKET_HEADER_LENGTH = 3,
+	PACKET_MAX_PAYLOAD_SIZE = 28 - PACKET_HEADER_LENGTH //25
 };
 
 
 typedef nx_struct pack{
-	nx_uint16_t dest;
-	nx_uint16_t src;
+	nx_uint8_t dest;
+	nx_uint8_t src;
 	nx_uint8_t protocol;
 	nx_uint8_t payload[PACKET_MAX_PAYLOAD_SIZE];
 }pack;

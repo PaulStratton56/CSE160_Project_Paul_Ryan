@@ -5,9 +5,9 @@
 #include "packet.h"
 
 enum{
-	FLOOD_PACKET_HEADER_LENGTH = 8,
-	FLOOD_PACKET_SIZE = PACKET_MAX_PAYLOAD_SIZE, //23
-	FLOOD_PACKET_MAX_PAYLOAD_SIZE = FLOOD_PACKET_SIZE - FLOOD_PACKET_HEADER_LENGTH // 15
+	FLOOD_PACKET_HEADER_LENGTH = 6,
+	FLOOD_PACKET_SIZE = PACKET_MAX_PAYLOAD_SIZE, //25
+	FLOOD_PACKET_MAX_PAYLOAD_SIZE = FLOOD_PACKET_SIZE - FLOOD_PACKET_HEADER_LENGTH // 19
 };
 
 /*
@@ -22,8 +22,8 @@ protocol: Determines whether the packet is a request or a reply (to respond appr
 payload: Contains a message or higher level packets.
 */
 typedef nx_struct floodpack{
-	nx_uint16_t original_src;
-	nx_uint16_t prev_src;
+	nx_uint8_t original_src;
+	nx_uint8_t prev_src;
 	nx_uint16_t seq;
     nx_uint8_t ttl;
 	nx_uint8_t protocol;

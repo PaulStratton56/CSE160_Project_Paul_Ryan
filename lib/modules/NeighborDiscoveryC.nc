@@ -14,6 +14,7 @@ implementation{
    components new TimerMilliC() as pingTimer;
    neighborDiscoveryP.pingTimer -> pingTimer;
 
+   //store quality data on set of neighbors
    components new HashmapC(linkquality,32) as neighborhood;
    neighborDiscoveryP.neighborhood -> neighborhood;
 
