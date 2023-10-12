@@ -30,8 +30,7 @@ implementation{
 
     /*== broadsend() ==
         After an incoming packet is received and stored in myWave, 
-        broadcasts a packet to all neighbors EXCEPT the source of the incoming packet.
-    */
+        broadcasts a packet to all neighbors EXCEPT the source of the incoming packet. */
     void broadsend(){
         uint16_t i = 0;
         //Get and store neighbors & the number of neighbors
@@ -66,8 +65,7 @@ implementation{
 
     /*== flood() ==
         Task to check if flooding of an incoming packet is necessary. 
-        If so, call broadsend to propogate flooding message.
-    */
+        If so, call broadsend to propogate flooding message. */
     task void flood(){
         //If the original source hasn't flooded a packet using this node yet,
         //OR the last packet seen by this node from the original source has an older sequence number, the message SHOULD send.
@@ -99,16 +97,13 @@ implementation{
 
     /*==PacketHandler.gotflood(...)==
         signaled from the PacketHandler module when a node receives an incoming flood packet.
-        Copies the packet into memory and then posts the flood task for implementation of flooding.
-    */
+        Copies the packet into memory and then posts the flood task for implementation of flooding. */
     event void PacketHandler.gotflood(uint8_t* wave){
         memcpy(&myWave,wave,FLOOD_PACKET_SIZE);
         logFloodpack((floodpack*)wave, FLOODING_CHANNEL);
         post flood();
     }
 
-    //Used for NeighborDiscovery, disregard.
-    event void PacketHandler.gotPing(uint8_t* _){}
 
     /*== makeFloodPack(...) ==
         Creates a pack containing all useful information for the Flooding module. 
@@ -119,8 +114,7 @@ implementation{
         seq: Sequence number of the packet (used to eliminate redundant packets, etc.)
         ttl: Time to Live of the packet (used to eliminate eternal packets, etc.)
         protocol: Determines whether the packet is a request or a reply (to respond appropriately)
-        payload: Contains a message or higher level packets.
-    */
+        payload: Contains a message or higher level packets. */
     error_t makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload){
         packet->original_src = o_src;
         packet->prev_src = p_src;
@@ -130,4 +124,8 @@ implementation{
         memcpy(packet->payload, payload, FLOOD_PACKET_MAX_PAYLOAD_SIZE);
         return SUCCESS;
     }
+
+    //Events used for other modules.
+    event void neighborhood.neighborUpdate() {}
+    event void PacketHandler.gotPing(uint8_t* _) {}
 }
