@@ -30,8 +30,7 @@ implementation{
         Increases the sequence number.
         Creates a packet to send out using NeighborDiscovery headers.
         Restarts the pingTimer.
-        Broadcasts the ping.
-    */
+        Broadcasts the ping. */
     task void ping(){
         char sendPayload[] = "Who's There?";
 
@@ -53,8 +52,7 @@ implementation{
     /*== onBoot() ==
         The first thing that runs in this module.
         Called from Node.nc's "startDone" function.
-        Posts a ping task to start the timer and introduce a node to its neighbors.
-    */
+        Posts a ping task to start the timer and introduce a node to its neighbors. */
     command void neighborDiscovery.onBoot(){
         post ping();
     }
@@ -63,8 +61,7 @@ implementation{
         Posted when the sendTimer fires.
         Checks and updates the quality of connections to other nodes listed in a hash table.
         Uses an exponentially weighted moving average for the connection quality.
-        If quality falls below 'allowedQuality' threshold, it is no longer considered as a neighbor.
-    */
+        If quality falls below 'allowedQuality' threshold, it is no longer considered as a neighbor. */
     task void updateLinks(){
         uint16_t i=0;
         linkquality status;
@@ -103,8 +100,7 @@ implementation{
         signaled when pingTimer expires.
         Posts updateLinks and sends out a ping.
         The ping() event also restarts this timer to create a loop.
-        (This may change to call the timer in the fired() event, depending on later issues.)
-    */
+        (This may change to call the timer in the fired() event, depending on later issues.) */
     event void pingTimer.fired(){
         post updateLinks();
         post ping();
@@ -112,8 +108,7 @@ implementation{
 
     /*== respondtoPingRequest() ==
         Task to handle a neighbor ping from another node.
-        Sends a pack back with the sequence number of the incoming pack.
-    */
+        Sends a pack back with the sequence number of the incoming pack. */
     task void respondtoPingRequest(){
         uint16_t dest = myPing.src;
         uint8_t seq = myPing.seq;
@@ -130,8 +125,7 @@ implementation{
 
     /*== respondtoPingReply() ==
         Task to handle a response to a ping.
-        Increases the stored quality of a connection, and updates the status of incoming packets as recent (not dropped).
-    */
+        Increases the stored quality of a connection, and updates the status of incoming packets as recent (not dropped). */
     task void respondtoPingReply(){
         linkquality status;
 
@@ -158,8 +152,7 @@ implementation{
     /*== PacketHandler.gotPing() ==
         Signaled from the PacketHandler module when receiving an incoming NeighborDiscovery packet.
         Checks the protocol of the ndpack previously stored in the SimpleSend pack, and responds appropriately.
-        Also copies the pack into NeighborDiscovery memory to prevent data loss.
-    */
+        Also copies the pack into NeighborDiscovery memory to prevent data loss. */
     event void PacketHandler.gotPing(uint8_t* payload){
         memcpy(&myPing, payload,20);
 
@@ -222,8 +215,7 @@ implementation{
         src: The source of the packet (used to reply, etc.)
         seq: The sequence number of the packet (used for statistics, etc.)
         protocol: Determines whether the packet is a request or a reply (to respond appropriately)
-        payload: Contains a message or higher level packets.
-    */
+        payload: Contains a message or higher level packets. */
     error_t makeNDpack(ndpack* packet, uint16_t src, uint8_t seq, uint8_t protocol, uint8_t* payload){
         packet->src = src;
         packet->seq = seq;
