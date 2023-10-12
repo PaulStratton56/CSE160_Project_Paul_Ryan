@@ -227,5 +227,6 @@ implementation{
 
     //Used for flooding, disregard.
     event void PacketHandler.gotflood(uint8_t* _){}
+    event void PacketHandler.gotRouted(uint8_t* _) {}
 
 }

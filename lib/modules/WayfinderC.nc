@@ -1,8 +1,5 @@
 configuration WayfinderC{
     provides interface Wayfinder;
-
-    uses interface neighborDiscovery;
-    uses interface flooding;
 }
 
 implementation{
@@ -15,5 +12,8 @@ implementation{
 
     components floodingC;
     WayfinderP.flooding = floodingC;
+
+    components new HashmapC(uint16_t, 32) as routingTable;
+    WayfinderP.routingTable -> routingTable; 
 
 }

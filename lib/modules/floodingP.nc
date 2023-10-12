@@ -15,24 +15,26 @@ implementation{
     //Define a static flood pack for later use
     uint16_t floodSequence=0;
     floodpack myWave;
-    pack myPack;
+    pack wave;
+
     //Function prototype
     error_t makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload);
-    
+    task void broadsend();
+    task void flood();
+
     //interface for another module initiating a flood
-    command void flooding.initiate(uint16_t ttl,uint8_t* payload){
+    command void flooding.initiate(uint16_t ttl, uint8_t protocol, uint8_t* payload){
         floodSequence+=1;
-        makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, PROTOCOL_FLOOD, payload);
+
+        makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, protocol, payload);
         //Encapsulate pack in a SimpleSend packet and broadcast it!
-        call waveSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,ttl,PROTOCOL_FLOOD,floodSequence,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
-        call waveSend.send(myPack,AM_BROADCAST_ADDR);
+        post flood();
     }
 
     /*== broadsend() ==
         After an incoming packet is received and stored in myWave, 
         broadcasts a packet to all neighbors EXCEPT the source of the incoming packet. */
-    void broadsend(){
-        pack wave;
+    task void broadsend(){
         int i = 0;
         //Get and store neighbors & the number of neighbors
         uint32_t* myNeighbors = call neighborhood.getNeighbors();
@@ -63,9 +65,17 @@ implementation{
     }
 
     /*== flood() ==
-        Task to check if flooding of an incoming packet is necessary. 
+        Task to handle floodPacks.
+        Checks if flooding of an incoming packet is necessary. 
         If so, call broadsend to propogate flooding message. */
     task void flood(){
+        //Firstly, let's see if the floodPack has anything useful.
+        switch(myWave.protocol){
+            case PROTOCOL_LINKSTATE:
+                signal flooding.gotLSP((uint8_t*)myWave.payload);
+                break;
+        }
+
         //If the original source hasn't flooded a packet using this node yet,
         //OR the last packet seen by this node from the original source has an older sequence number, the message SHOULD send.
         if(!call packets.contains(myWave.original_src) || call packets.get(myWave.original_src)<myWave.seq){
@@ -75,7 +85,7 @@ implementation{
                 call packets.insert(myWave.original_src,myWave.seq);
                 
                 call neighborhood.printMyNeighbors();
-                broadsend();
+                post broadsend();
             }
             //Otherwise, the packet is dead, don't propogate.
             else{
@@ -91,9 +101,9 @@ implementation{
     /*==PacketHandler.gotflood(...)==
         signaled from the PacketHandler module when a node receives an incoming flood packet.
         Copies the packet into memory and then posts the flood task for implementation of flooding. */
-    event void PacketHandler.gotflood(uint8_t* wave){
-        memcpy(&myWave,wave,20);
-        logFloodpack((floodpack*)wave, FLOODING_CHANNEL);
+    event void PacketHandler.gotflood(uint8_t* incomingWave){
+        memcpy(&myWave,incomingWave,20);
+        logFloodpack((floodpack*)incomingWave, FLOODING_CHANNEL);
         post flood();
     }
 
@@ -120,5 +130,7 @@ implementation{
 
     //Events used for other modules.
     event void neighborhood.neighborUpdate() {}
-    event void PacketHandler.gotPing(uint8_t* _) {}
+    event void PacketHandler.gotPing(uint8_t* _) {}   
+    event void PacketHandler.gotRouted(uint8_t* _) {}
+    
 }

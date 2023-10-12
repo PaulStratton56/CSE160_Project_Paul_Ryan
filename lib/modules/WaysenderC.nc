@@ -1,9 +1,5 @@
 configuration WaysenderC{
     provides interface Waysender;
-
-    uses interface SimpleSend as sender;
-    uses interface Wayfinder as router;
-    uses interface PacketHandler;
 }
 
 implementation{
