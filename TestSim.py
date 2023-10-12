@@ -146,8 +146,8 @@ def main():
     s = TestSim()
 
     # s.loadTopo("long_line.topo")
-    # s.loadTopo("smalltopo.topo")
-    s.loadTopo("example.topo")
+    s.loadTopo("smalltopo.topo")
+    # s.loadTopo("example.topo")
 
     s.loadNoise("no_noise.txt")
 
@@ -170,7 +170,7 @@ def main():
     s.runTime(1)
     print("\n\n===================================\n          RESUMING NODE 2          \n===================================\n\n")
     s.moteOn(2)
-    s.runTime(3)
+    s.runTime(1)
 
 
 

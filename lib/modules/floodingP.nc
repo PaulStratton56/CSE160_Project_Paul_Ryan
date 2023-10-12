@@ -91,10 +91,6 @@ implementation{
         }
     }
 
-    event void neighborhood.neighborUpdate(){
-        // dbg(FLOODING_CHANNEL,"Update to table!\n");
-    }
-
     /*==PacketHandler.gotflood(...)==
         signaled from the PacketHandler module when a node receives an incoming flood packet.
         Copies the packet into memory and then posts the flood task for implementation of flooding. */
