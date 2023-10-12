@@ -4,9 +4,9 @@
 
 interface neighborDiscovery{
     command void onBoot();
-    command uint32_t* getNeighbors();
+    event void neighborUpdate();
+    command uint32_t getNeighbor(uint16_t i);
     command uint16_t numNeighbors();
     command bool excessNeighbors();
     command void printMyNeighbors();
-    event void neighborUpdate();
 }

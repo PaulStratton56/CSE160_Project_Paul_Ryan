@@ -16,8 +16,8 @@ enum{
 
 
 typedef nx_struct pack{
-	nx_uint8_t dest;
 	nx_uint8_t src;
+	nx_uint8_t dest;
 	nx_uint8_t protocol;
 	nx_uint8_t payload[PACKET_MAX_PAYLOAD_SIZE];
 }pack;

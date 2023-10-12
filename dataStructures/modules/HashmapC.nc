@@ -120,10 +120,9 @@ implementation{
          i++;
       }while(i<HASH_MAX_SIZE);
       if(removed)
-	{
-		removeFromKeyList(k);
-	}
-
+      {
+         removeFromKeyList(k);
+      }
 
    }
 
@@ -141,14 +140,18 @@ implementation{
       return map[0].value;
    }
 
+   command uint32_t Hashmap.getIndex(uint16_t i){
+      return keys[i];
+   }
+
    command bool Hashmap.contains(uint32_t k){
       uint32_t i=0;	uint32_t j=0;
       /*
       if(k == EMPTY_KEY)
-	{
-		return FALSE;
-	}
-	*/
+      {
+         return FALSE;
+      }
+      */
       do{
          j=hash(k, i);
          if(map[j].key == k)
@@ -167,6 +170,7 @@ implementation{
    command uint32_t* Hashmap.getKeys(){
       return keys;
    }
+   
 
    command uint16_t Hashmap.size(){
       return numofVals;

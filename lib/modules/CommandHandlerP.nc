@@ -48,45 +48,45 @@ implementation{
             switch(commandID){
             // A ping will have the destination of the packet as the first
             // value and the string in the remainder of the payload
-            case CMD_PING:
-                dbg(COMMAND_CHANNEL, "Command Type: Ping\n");
-                signal CommandHandler.ping(buff[0], &buff[1]);
-                break;
-                
-            case CMD_NEIGHBOR_DUMP:
-                dbg(COMMAND_CHANNEL, "Command Type: Neighbor Dump\n");
-                signal CommandHandler.printNeighbors();
-                break;
+                case CMD_PING:
+                    dbg(COMMAND_CHANNEL, "Command Type: Ping\n");
+                    signal CommandHandler.ping(buff[0], &buff[1]);
+                    break;
+                    
+                case CMD_NEIGHBOR_DUMP:
+                    dbg(COMMAND_CHANNEL, "Command Type: Neighbor Dump\n");
+                    signal CommandHandler.printNeighbors();
+                    break;
 
-            case CMD_LINKSTATE_DUMP:
-                dbg(COMMAND_CHANNEL, "Command Type: Link State Dump\n");
-                signal CommandHandler.printLinkState();
-                break;
+                case CMD_LINKSTATE_DUMP:
+                    dbg(COMMAND_CHANNEL, "Command Type: Link State Dump\n");
+                    signal CommandHandler.printLinkState();
+                    break;
 
-            case CMD_ROUTETABLE_DUMP:
-                dbg(COMMAND_CHANNEL, "Command Type: Route Table Dump\n");
-                signal CommandHandler.printRouteTable();
-                break;
+                case CMD_ROUTETABLE_DUMP:
+                    dbg(COMMAND_CHANNEL, "Command Type: Route Table Dump\n");
+                    signal CommandHandler.printRouteTable();
+                    break;
 
-            case CMD_TEST_CLIENT:
-                dbg(COMMAND_CHANNEL, "Command Type: Client\n");
-                signal CommandHandler.setTestClient();
-                break;
+                case CMD_TEST_CLIENT:
+                    dbg(COMMAND_CHANNEL, "Command Type: Client\n");
+                    signal CommandHandler.setTestClient();
+                    break;
 
-            case CMD_TEST_SERVER:
-                dbg(COMMAND_CHANNEL, "Command Type: Client\n");
-                signal CommandHandler.setTestServer();
-                break;
-                
-            //A flood will only need a given string as a payload, since it broadcasts first.
-            case CMD_FLOOD:
-                dbg(COMMAND_CHANNEL, "Command Type: Flood | Payload: %s\n",&buff[1]);
-                signal CommandHandler.flood(&buff[1]);
-                break;
+                case CMD_TEST_SERVER:
+                    dbg(COMMAND_CHANNEL, "Command Type: Client\n");
+                    signal CommandHandler.setTestServer();
+                    break;
+                    
+                //A flood will only need a given string as a payload, since it broadcasts first.
+                case CMD_FLOOD:
+                    dbg(COMMAND_CHANNEL, "Command Type: Flood | Payload: %s\n",&buff[1]);
+                    signal CommandHandler.flood(&buff[1]);
+                    break;
 
-            default:
-                dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);
-                break;
+                default:
+                    dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);
+                    break;
             }
             call Pool.put(raw_msg);
         }

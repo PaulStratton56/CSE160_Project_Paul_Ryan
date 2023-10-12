@@ -177,8 +177,8 @@ implementation{
     }
 
     //getNeighbors() returns a list of node IDs that are considered neighbors.
-    command uint32_t* neighborDiscovery.getNeighbors(){
-        return call neighborhood.getKeys();
+    command uint32_t neighborDiscovery.getNeighbor(uint16_t i){
+        return call neighborhood.getIndex(i);
     }
 
     //numNeighbors() returns the number of nodes currently considered neighbors.

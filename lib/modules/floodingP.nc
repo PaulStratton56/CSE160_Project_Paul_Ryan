@@ -20,9 +20,9 @@ implementation{
     error_t makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload);
     
     //interface for another module initiating a flood
-    command void flooding.initiate(uint16_t ttl,uint8_t* payload){
+    command void flooding.initiate(uint8_t ttl,uint8_t protocol, uint8_t* payload){
         floodSequence+=1;
-        makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, PROTOCOL_FLOOD, payload);
+        makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, protocol, payload);
         //Encapsulate pack in a SimpleSend packet and broadcast it!
         call waveSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,PROTOCOL_FLOOD,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         call waveSend.send(myPack,AM_BROADCAST_ADDR);
@@ -33,9 +33,9 @@ implementation{
         broadcasts a packet to all neighbors EXCEPT the source of the incoming packet.
     */
     void broadsend(){
-        int i = 0;
+        uint16_t i = 0;
         //Get and store neighbors & the number of neighbors
-        uint32_t* myNeighbors = call neighborhood.getNeighbors();
+        uint32_t neighbor;
         uint16_t numNeighbors = call neighborhood.numNeighbors();
         //Update the previous source with current node ID (since a packet will soon be sent out by this node)
         uint16_t prevNode = myWave.prev_src;
@@ -45,18 +45,16 @@ implementation{
         //Create a pack `wave` to send out using the myWave flood pack as a payload
         call waveSend.makePack(&myPack,myWave.original_src,myWave.prev_src,PROTOCOL_FLOOD,(uint8_t*) &myWave,PACKET_MAX_PAYLOAD_SIZE);
         
-        /*
-        !!!potentially has memory issues because hashmap is owned by ND module!!!
-        */
         if(!call neighborhood.excessNeighbors()){ //If we know all our neighbors...
             for(i=0;i<numNeighbors;i++){
-                if(myNeighbors[i]!=(uint32_t)prevNode){ //If the currently considered neighbor is not the previous source, propogate the wave to that node.
+                neighbor = call neighborhood.getNeighbor(i);
+                if(neighbor!=(uint32_t)prevNode){ //If the currently considered neighbor is not the previous source, propogate the wave to that node.
                     
                     char* payload_message = (char*) myWave.payload;
                     payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
-                    dbg(FLOODING_CHANNEL,"Propagating Flood Message: '%s' sent to me by %d. Sending to %d\n", payload_message, prevNode, myNeighbors[i]);
+                    dbg(FLOODING_CHANNEL,"Propagating Flood Message: '%s' sent to me by %d. Sending to %d\n", payload_message, prevNode, neighbor);
                     
-                    call waveSend.send(myPack,myNeighbors[i]);
+                    call waveSend.send(myPack,neighbor);
                 }
             }
         }
@@ -89,7 +87,9 @@ implementation{
         }
         //If both of the outer conditions are false, the packet has already been propogated, so drop it.
         else{
-            dbg(FLOODING_CHANNEL,"Already propagated '%s'. Duplicate came from %hhu\n",(char*) myWave.payload,myWave.prev_src);
+            char* payload_message = (char*) myWave.payload;
+            payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
+            dbg(FLOODING_CHANNEL,"Already propagated '%s'. Duplicate came from %hhu\n",payload_message,myWave.prev_src);
         }
     }
 

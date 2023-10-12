@@ -80,7 +80,7 @@ implementation{
    //Command implementation of flooding
    event void CommandHandler.flood(uint8_t* payload){
       dbg(GENERAL_CHANNEL, "FLOOD EVENT\n");
-      call flood.initiate(250,payload);  
+      call flood.initiate(255,PROTOCOL_FLOOD, payload);  
    }
    
    event void CommandHandler.printNeighbors(){}
