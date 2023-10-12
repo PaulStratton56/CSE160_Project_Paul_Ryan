@@ -42,7 +42,7 @@ implementation{
             uint8_t nextHop = call router.getRoute(dest);
             
             myRoute.ttl -= 1;
-            sender.makePack(&myPack, TOS_NODE_ID, nextHop, myRoute.ttl, PROTOCOL_ROUTING, myRoute.routingSeq, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
+            sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
             sender.send(myPack, nextHop);
             dbg(ROUTING_CHANNEL, "Dest: %d | Forwarded to: %d\n", myRoute.dest,nextHop);
         }

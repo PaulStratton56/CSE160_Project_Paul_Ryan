@@ -1,7 +1,7 @@
 #ifndef LSP_H
 #define LSP_H
 
-#include "flooding.h"
+#include "floodpack.h"
 enum{
     LSP_PACKET_HEADER_LENGTH = 3,
     LSP_PACKET_SIZE = FLOOD_PACKET_MAX_PAYLOAD_SIZE,//19

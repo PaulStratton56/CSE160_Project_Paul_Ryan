@@ -8,10 +8,10 @@ implementation{
     Wayfinder = WayfinderP.Wayfinder;
 
     components neighborDiscoveryC;
-    WayfinderP.neighborDiscovery = neighborDiscoveryC;
+    WayfinderP.neighborDiscovery -> neighborDiscoveryC;
 
     components floodingC;
-    WayfinderP.flooding = floodingC;
+    WayfinderP.flooding -> floodingC;
 
     components new HashmapC(uint16_t, 32) as routingTable;
     WayfinderP.routingTable -> routingTable; 
