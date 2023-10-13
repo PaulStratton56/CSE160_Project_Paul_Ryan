@@ -14,5 +14,9 @@ typedef struct lsp{
     nx_uint8_t payload[LSP_PACKET_MAX_PAYLOAD_SIZE];
 }lsp;
 
+void logLSP(lsp* input, char channel[]){
+	dbg(channel, "id: %d | Seq: %d | Payload: %s\n",
+	input->id,input->seq,(char*) input->payload);
+}
 
 #endif

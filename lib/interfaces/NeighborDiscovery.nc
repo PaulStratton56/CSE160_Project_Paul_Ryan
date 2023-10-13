@@ -8,5 +8,6 @@ interface neighborDiscovery{
     command uint32_t getNeighbor(uint16_t i);
     command uint16_t numNeighbors();
     command bool excessNeighbors();
+    command uint8_t* assembleData();
     command void printMyNeighbors();
 }

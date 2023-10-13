@@ -6,7 +6,7 @@ module WayfinderP{
     uses interface neighborDiscovery;
     uses interface flooding;
     uses interface Hashmap<uint16_t> as routingTable;
-
+    uses interface Timer<TMilli> as lspTimer;
 }
 
 implementation{
@@ -14,10 +14,27 @@ implementation{
     uint8_t topoTable[32][32]; // 0 row/col unused (no "node 0")
     lsp myLSP;
     uint16_t lspSequence = 0;
-
-
+    uint8_t assembledData[2*32+1];
+    bool sendLSPs = FALSE;
     void makeLSP(lsp* LSP, uint16_t id, uint16_t seq, uint8_t* payload);
 
+    command void Wayfinder.onBoot(){
+        //initialize topo to 0
+        int i=0;
+        int j=0;
+        for(i = 0; i < topo_size; i++){
+            for(j = 0; j < topo_size; j++){
+                topoTable[i][j] = 0;
+            }
+        }
+        call lspTimer.startOneShot(8000);
+    }
+
+    task void findPaths(){
+        //Posted when recomputing routing table is necessary.
+        //Using the Topology table, run Dijkstra to update a routing table.
+
+    }
     /* == updateTopoTable == */
     task void updateTopoTable(){
         uint8_t source = myLSP.id;
@@ -29,42 +46,38 @@ implementation{
             }
             topoTable[source][payload[i]] = payload[i+1];
         }
-
+        dbg(ROUTING_CHANNEL,"Updated Topology\n");
+        post findPaths();
     }
 
-    command void Wayfinder.initializeTopo(){
-        int i=0;
-        int j=0;
-        for(i = 0; i < topo_size; i++){
-            for(j = 0; j < topo_size; j++){
-                topoTable[i][j] = 0;
-            }
-        }
-    }
 
     task void sendLSP(){
         //Posted when NT is updated
         //Create an LSP and flood it to the network.
-        uint8_t* payload = (uint8_t*)myLSP.payload; //Gotta fill this still
+        uint8_t* data = call neighborDiscovery.assembleData();
+        memcpy(&assembledData, data, data[0]);
         lspSequence += 1;
-        makeLSP(&myLSP, TOS_NODE_ID, lspSequence, payload);
+        makeLSP(&myLSP, TOS_NODE_ID, lspSequence, &(assembledData[1]));//first byte tells length
+        logLSP(&myLSP,FLOODING_CHANNEL);
         post updateTopoTable();
         call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
 
     }
 
+    event void lspTimer.fired(){
+        dbg(ROUTING_CHANNEL,"LSP Timer Fired\n");
+        sendLSPs = TRUE;
+        post sendLSP();
+        call lspTimer.startOneShot(256000);
+    }
+
     task void receiveLSP(){
         //Posted when Flooding signals an LSP.
         //Update a Topology table with the new LSP.
+        //check sequence
         post updateTopoTable();
-
     }
 
-    task void findPaths(){
-        //Posted when recomputing routing table is necessary.
-        //Using the Topology table, run Dijkstra to update a routing table.
-
-    }
 
     command uint16_t Wayfinder.getRoute(uint16_t dest){
         //Called when the next node in a route is needed.
@@ -75,8 +88,9 @@ implementation{
     event void neighborDiscovery.neighborUpdate(){
         //When NT is updated:
         //Send a new LSP
-        post sendLSP();
-
+        if(sendLSPs){
+            post sendLSP();
+        }
     }
 
     event void flooding.gotLSP(uint8_t* payload){

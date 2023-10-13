@@ -16,4 +16,6 @@ implementation{
     components new HashmapC(uint16_t, 32) as routingTable;
     WayfinderP.routingTable -> routingTable; 
 
+   components new TimerMilliC() as lspTimer;
+   WayfinderP.lspTimer -> lspTimer;
 }

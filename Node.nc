@@ -45,7 +45,7 @@ implementation{
 
          //When done booting, start the ND Ping timer.
          call nd.onBoot();
-         call router.initializeTopo();
+         call router.onBoot();
 
       }else{
          //Retry until successful

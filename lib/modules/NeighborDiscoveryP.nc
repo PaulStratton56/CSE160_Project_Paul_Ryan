@@ -21,6 +21,7 @@ implementation{
                              //A quality below this value represents a 'too noisy' connection.
     uint8_t maxQuality = 255;
     uint16_t mySeq = 0; //Sequence of the broadcasted pings
+    uint8_t assembledData[2*32+1];//2*hashmap max size
 
 
     error_t makeNDpack(ndpack* packet, uint8_t src, uint16_t seq, uint8_t protocol, uint8_t* payload);
@@ -182,6 +183,20 @@ implementation{
     //excessNeighbors() returns True if the table holding neighbor IDs is full, False otherwise.
     command bool neighborDiscovery.excessNeighbors(){
         return call neighborhood.size()==call neighborhood.maxSize();
+    }
+
+    command uint8_t* neighborDiscovery.assembleData(){
+        uint32_t* myNeighbors = call neighborhood.getKeys();
+        uint16_t size = call neighborhood.size();
+        int i=0;
+        linkquality status;
+        assembledData[0]=2*size+1;
+        for(i=0;i<size;i++){
+            assembledData[2*i+1] = myNeighbors[i];
+            status = call neighborhood.get(myNeighbors[i]);
+            assembledData[2*i+2] = status.quality;
+        }
+        return &assembledData[0];
     }
 
     //printMyNeighbors() prints a list of neighbors to the debug console.

@@ -72,11 +72,6 @@ implementation{
         If so, call broadsend to propogate flooding message. */
     task void flood(){
         //Firstly, let's see if the floodPack has anything useful.
-        switch(myWave.protocol){
-            case PROTOCOL_LINKSTATE:
-                signal flooding.gotLSP((uint8_t*)myWave.payload);
-                break;
-        }
 
         //If the original source hasn't flooded a packet using this node yet,
         //OR the last packet seen by this node from the original source has an older sequence number, the message SHOULD send.
@@ -106,8 +101,19 @@ implementation{
         signaled from the PacketHandler module when a node receives an incoming flood packet.
         Copies the packet into memory and then posts the flood task for implementation of flooding. */
     event void PacketHandler.gotflood(uint8_t* incomingWave){
-        memcpy(&myWave,incomingWave,20);
+        memcpy(&myWave,incomingWave,FLOOD_PACKET_SIZE);
         logFloodpack((floodpack*)incomingWave, FLOODING_CHANNEL);
+        switch(myWave.protocol){
+            case PROTOCOL_LINKSTATE:
+                // dbg(FLOODING_CHANNEL,"LSP Flood\n");
+                signal flooding.gotLSP((uint8_t*)myWave.payload);
+                break;
+            case PROTOCOL_FLOOD:
+                // dbg(FLOODING_CHANNEL, "Regular Flood\n");
+                break;
+            default:
+                dbg(FLOODING_CHANNEL,"I don't know what kind of flood this is.\n");
+        }
         post flood();
     }
 
