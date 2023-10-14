@@ -146,34 +146,16 @@ def main():
     s = TestSim()
 
     # s.loadTopo("long_line.topo")
-    s.loadTopo("smalltopo.topo")
-    # s.loadTopo("example.topo")
+    # s.loadTopo("smalltopo.topo")
+    s.loadTopo("example.topo")
 
     s.loadNoise("no_noise.txt")
 
     s.addChannel(s.NEIGHBOR_CHANNEL)                                                
-    s.addChannel(s.ROUTING_CHANNEL)                                                
-    s.addChannel(s.FLOODING_CHANNEL)
+    # s.addChannel(s.ROUTING_CHANNEL)                                                
+    # s.addChannel(s.FLOODING_CHANNEL)
     s.bootAll()
-    s.runTime(2)
-
-    # s.addChannel(s.COMMAND_CHANNEL)
-    # s.addChannel(s.GENERAL_CHANNEL)
-    # s.addChannel(s.HASHMAP_CHANNEL)
-    
-    # print("\n\n============================\n          FLOODING          \n============================\n\n")
-    # s.flood(1, "12345678901234567890123")#to check length of flooded message
-    # s.runTime(1)
-    # print("\n\n==============================================================\n          NEIGHBOR DISCOVERY (Starts Partway Through)          \n==============================================================\n\n")
-    # s.runTime(3)
-    print("\n\n====================================\n          DISABLING NODE 2          \n====================================\n\n")
-    s.moteOff(2)
-    s.runTime(2)
-    # print("\n\n===================================\n          RESUMING NODE 2          \n===================================\n\n")
-    # s.moteOn(2)
-    # s.runTime(1)
-
-
+    s.runTime(10)
 
 if __name__ == '__main__':
     main()

@@ -15,8 +15,8 @@ typedef struct lsp{
 }lsp;
 
 void logLSP(lsp* input, char channel[]){
-	dbg(channel, "id: %d | Seq: %d | Payload: %s\n",
-	input->id,input->seq,(char*) input->payload);
+	dbg(channel, "id: %d | Seq: %d\n",
+	input->id,input->seq);
 }
 
 #endif

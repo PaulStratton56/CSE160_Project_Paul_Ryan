@@ -54,7 +54,7 @@ implementation{
                     
                     char* payload_message = (char*) myWave.payload;
                     payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
-                    dbg(FLOODING_CHANNEL,"Propagating Flood Message: '%s' sent to me by %d. Sending to %d\n", payload_message, prevNode, neighbor);
+                    dbg(FLOODING_CHANNEL,"Propagating Flood sent to me by %d. Sending to %d\n", prevNode, neighbor);
                     
                     call waveSend.send(myPack,neighbor);
                 }

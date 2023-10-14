@@ -27,6 +27,8 @@ implementation{
                 topoTable[i][j] = 0;
             }
         }
+        dbg(ROUTING_CHANNEL, "Initialized Topo Table\n");
+        call Wayfinder.printTopo();
         call lspTimer.startOneShot(8000);
     }
 
@@ -40,13 +42,16 @@ implementation{
         uint8_t source = myLSP.id;
         uint8_t* payload = (uint8_t*)myLSP.payload;
         int i=0;
-        for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE && payload[i] != 0; i+=2){
+        for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE; i+=2){
+            if(payload[i] == 0){ break; }
             if(payload[i] > topo_size || source > topo_size){
                 dbg(ROUTING_CHANNEL, "ERROR: ID > topo_size(%d)\n",topo_size);
             }
             topoTable[source][payload[i]] = payload[i+1];
+            // dbg(ROUTING_CHANNEL, "source: %d | dest: %d | quality: %d | value: %d\n", source, payload[i], payload[i+1], topoTable[source][payload[i]]);
+            call Wayfinder.printTopo();
+
         }
-        dbg(ROUTING_CHANNEL,"Updated Topology\n");
         post findPaths();
     }
 
@@ -61,7 +66,7 @@ implementation{
         logLSP(&myLSP,FLOODING_CHANNEL);
         post updateTopoTable();
         call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
-
+        dbg(ROUTING_CHANNEL, "Flooded new LSP\n");
     }
 
     event void lspTimer.fired(){
@@ -83,6 +88,30 @@ implementation{
         //Called when the next node in a route is needed.
         //Quick lookup in the routing table. Easy peasy!
         return call routingTable.get(dest);
+    }
+
+    command void Wayfinder.printTopo(){
+        //Prints the topology.
+        int i, j, k, lastNode = 10, spacing = 2;
+        char row[(lastNode*spacing)+1];
+        // sep[(lastNode*spacing)] = '\00';
+
+        dbg(ROUTING_CHANNEL, "Topo:\n");
+        for(i = 0 ; i < lastNode; i++){
+            for(j = 0; j < (lastNode*spacing); j+=spacing){
+                if(j == 0 || i == 0){ row[j] = '0'+(i+(j/spacing)); }
+                else if(topoTable[i][j/spacing] >= 192){ row[j] = '3'; }
+                else if(topoTable[i][j/spacing] >= 128){ row[j] = '2'; }
+                else if(topoTable[i][j/spacing] >= 64){ row[j] = '1'; }
+                else { row[j] = '_'; }
+                for(k = 1; k < spacing-1; k++){
+                    row[j+k] = ' ';
+                }
+                row[j + spacing-1] = '|';
+            } 
+            row[(lastNode*spacing)] = '\00';
+            dbg(ROUTING_CHANNEL, "%s\n",row);
+        }
     }
 
     event void neighborDiscovery.neighborUpdate(){
