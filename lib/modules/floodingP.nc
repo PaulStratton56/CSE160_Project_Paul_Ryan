@@ -93,7 +93,7 @@ implementation{
         else{
             char* payload_message = (char*) myWave.payload;
             payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
-            dbg(FLOODING_CHANNEL,"Already propagated '%s'. Duplicate came from %hhu\n",payload_message,myWave.prev_src);
+            //dbg(FLOODING_CHANNEL,"Already propagated '%s'. Duplicate came from %hhu\n",payload_message,myWave.prev_src);
         }
     }
 
@@ -103,11 +103,11 @@ implementation{
     event void PacketHandler.gotflood(uint8_t* incomingWave){
         memcpy(&myWave,incomingWave,FLOOD_PACKET_SIZE);
         // if(TOS_NODE_ID==3 && myWave.original_src==3){
-        //     logFloodpack((floodpack*)incomingWave, ROUTING_CHANNEL);
+        //logFloodpack((floodpack*)incomingWave, ROUTING_CHANNEL);
         // }
         switch(myWave.protocol){
             case PROTOCOL_LINKSTATE:
-                // dbg(FLOODING_CHANNEL,"LSP Flood\n");
+                //dbg(FLOODING_CHANNEL,"LSP Flood\n");
                 signal flooding.gotLSP((uint8_t*)myWave.payload);
                 break;
             case PROTOCOL_FLOOD:

@@ -20,10 +20,16 @@ implementation{
         //Called when a routing packet wants to be sent!
         //Sends a packet using a routing table.
         uint8_t nextHop = call router.getRoute(dest);
-        routingSeq += 1;
-        makeRoutingPack(&myRoute, TOS_NODE_ID, dest, routingSeq, ttl, protocol, payload);
-        call sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
-        call sender.send(myPack, nextHop);
+        if(nextHop == 0){
+            dbg(ROUTING_CHANNEL, "Not sure how to get there. Stopping.\n");
+        }
+        else{
+            routingSeq += 1;
+            makeRoutingPack(&myRoute, TOS_NODE_ID, dest, routingSeq, ttl, protocol, payload);
+            call sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
+            call sender.send(myPack, nextHop);
+            dbg(ROUTING_CHANNEL, "Sending '%s' to %d to get to %d\n",(char*)payload, nextHop, dest);
+        }
     }
 
     task void gotRoutedPacket(){

@@ -33,7 +33,7 @@ implementation{
             }
         }
         maxNode = TOS_NODE_ID;
-        dbg(ROUTING_CHANNEL, "Initialized Topo Table\n");
+        // dbg(ROUTING_CHANNEL, "Initialized Topo Table\n");
         // call Wayfinder.printTopo();
         call lspTimer.startOneShot(8000);
         // info.neighbor = TOS_NODE_ID;
@@ -41,67 +41,65 @@ implementation{
     }
 
     task void findPaths(){
-        if(TOS_NODE_ID == 3){
-            //Posted when recomputing routing table is necessary.
-            //Using the Topology table, run Dijkstra to update a routing table.
-            /*if(TOS_NODE_ID==3){//testing heap
-                dbg(ROUTING_CHANNEL,"Finding Shortest Paths\n");
-                call unexplored.insert(info);
-                info.quality*=17;
-                info.quality = info.quality - (int) info.quality;
+        //Posted when recomputing routing table is necessary.
+        //Using the Topology table, run Dijkstra to update a routing table.
+        /*if(TOS_NODE_ID==3){//testing heap
+            dbg(ROUTING_CHANNEL,"Finding Shortest Paths\n");
+            call unexplored.insert(info);
+            info.quality*=17;
+            info.quality = info.quality - (int) info.quality;
+            call unexplored.print();
+            if(info.quality>.8){
+                call unexplored.extract();
+                call unexplored.extract();
                 call unexplored.print();
-                if(info.quality>.8){
-                    call unexplored.extract();
-                    call unexplored.extract();
-                    call unexplored.print();
-                }
-            }*/
-            int i=0;
-            float potentialQuality;
-            nqPair temp = {0,0};
-            nqPair current = {TOS_NODE_ID, 1};
-            dbg(ROUTING_CHANNEL, "Running Dijkstra\n");
-            call Wayfinder.printTopo();
-            call routingTable.clearValues(temp);
-            call unexplored.insert(current);
-            call routingTable.insert(TOS_NODE_ID,current);
-
-            for(i=1;i<maxNode;i++){
-                if(i!=TOS_NODE_ID && topoTable[TOS_NODE_ID][i]>0){
-                    temp.neighbor = i;
-                    temp.quality = topoTable[TOS_NODE_ID][i];
-                    call routingTable.insert(i,temp);
-                    call unexplored.insert(temp);
-                }
             }
+        }*/
+        int i=0;
+        float potentialQuality;
+        nqPair temp = {0,0};
+        nqPair current = {TOS_NODE_ID, 1};
+        // dbg(ROUTING_CHANNEL, "Running Dijkstra\n");
+        // call Wayfinder.printTopo();
+        call routingTable.clearValues(temp);
+        call unexplored.insert(current);
+        call routingTable.insert(TOS_NODE_ID,current);
 
-            while(call unexplored.size() > 0){
-                assignNQP(&current,call unexplored.extract());            
-                if(current.quality == (call routingTable.get(current.neighbor)).quality){
-                    // dbg(ROUTING_CHANNEL, "Currently Considering: Node %d with Quality %f\n",current.neighbor,current.quality);
-                    for(i=1;i<=maxNode;i++){
-                        if(i!=current.neighbor){
-                            potentialQuality = current.quality*topoTable[current.neighbor][i];
-                            if(potentialQuality > (call routingTable.get(i)).quality){
-                                // dbg(ROUTING_CHANNEL, "Going to %d from %d with Quality %f is better than with %f\n",i,current.neighbor,potentialQuality,(call routingTable.get(i)).quality);
-                                call unexplored.insertPair(i,potentialQuality);
-                                temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;
-                                temp.quality = potentialQuality;
-                                call routingTable.insert(i,temp);
-                            }
+        for(i=1;i<=maxNode;i++){
+            if(i!=TOS_NODE_ID && topoTable[TOS_NODE_ID][i]>0){
+                temp.neighbor = i;
+                temp.quality = topoTable[TOS_NODE_ID][i];
+                call routingTable.insert(i,temp);
+                call unexplored.insert(temp);
+            }
+        }
+
+        while(call unexplored.size() > 0){
+            assignNQP(&current,call unexplored.extract());            
+            if(current.quality == (call routingTable.get(current.neighbor)).quality){
+                // dbg(ROUTING_CHANNEL, "Currently Considering: Node %d with Quality %f\n",current.neighbor,current.quality);
+                for(i=1;i<=maxNode;i++){
+                    if(i!=current.neighbor){
+                        potentialQuality = current.quality*topoTable[current.neighbor][i];
+                        if(potentialQuality > (call routingTable.get(i)).quality){
+                            // dbg(ROUTING_CHANNEL, "Going to %d from %d with Quality %f is better than with %f\n",i,current.neighbor,potentialQuality,(call routingTable.get(i)).quality);
+                            call unexplored.insertPair(i,potentialQuality);
+                            temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;
+                            temp.quality = potentialQuality;
+                            call routingTable.insert(i,temp);
                         }
                     }
                 }
             }
-            temp.neighbor=0;
-            temp.quality=1;
-            for(i=0;i<call routingTable.size();i++){
-                if((call routingTable.get(call routingTable.getIndex(i))).neighbor==0){
-                    call routingTable.insert(call routingTable.getIndex(i),temp);
-                }
-            }
-            printRoutingTable();
         }
+        temp.neighbor=0;
+        temp.quality=1;
+        for(i=0;i<call routingTable.size();i++){
+            if((call routingTable.get(call routingTable.getIndex(i))).neighbor==0){
+                call routingTable.insert(call routingTable.getIndex(i),temp);
+            }
+        }
+        //printRoutingTable();
     }
 
     uint16_t gotAllExpectedLSPs(){
@@ -146,7 +144,7 @@ implementation{
             post findPaths();
         }
         else{
-            if(TOS_NODE_ID==3){dbg(ROUTING_CHANNEL,"Missing LSP from %d\n",missing);}
+            //dbg(ROUTING_CHANNEL,"Missing LSP from %d\n",missing);
         }
     }
 
@@ -159,15 +157,15 @@ implementation{
         assembledData[assembledData[0]]=0;
         lspSequence += 1;
         makeLSP(&myLSP, TOS_NODE_ID, lspSequence, &(assembledData[1]));//first byte tells length
-        if(TOS_NODE_ID==3){dbg(ROUTING_CHANNEL,"Updating TopoTable because my neighbors changed\n");}
+        //dbg(ROUTING_CHANNEL,"Updating TopoTable because my neighbors changed\n");
         // logLSP(&myLSP,ROUTING_CHANNEL);
         post updateTopoTable();
         call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
-        dbg(ROUTING_CHANNEL, "Initiated LSP Flood\n");
+        //dbg(ROUTING_CHANNEL, "Initiated LSP Flood\n");
     }
 
     event void lspTimer.fired(){
-        dbg(ROUTING_CHANNEL,"LSP Timer Fired\n");
+        // dbg(ROUTING_CHANNEL,"LSP Timer Fired\n");
         sendLSPs = TRUE;
         post sendLSP();
         call lspTimer.startOneShot(256000);
@@ -181,7 +179,7 @@ implementation{
             maxNode=myLSP.id;
         }
         if(myLSP.seq > topoTable[myLSP.id][0]){
-            if(TOS_NODE_ID==3){dbg(ROUTING_CHANNEL,"Updating TopoTable because %d's neighbors changed\n", myLSP.id);}
+            //dbg(ROUTING_CHANNEL,"Updating TopoTable because %d's neighbors changed\n", myLSP.id);
             topoTable[myLSP.id][0] = myLSP.seq;
             post updateTopoTable();
         }

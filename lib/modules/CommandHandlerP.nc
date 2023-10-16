@@ -87,6 +87,7 @@ implementation{
                 case CMD_ROUTE:
                     dbg(COMMAND_CHANNEL, "Command Type: Route | Payload: %s\n",&buff[1]);
                     signal CommandHandler.route(buff[0], &buff[1]);
+                    break;
 
                 default:
                     dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);
