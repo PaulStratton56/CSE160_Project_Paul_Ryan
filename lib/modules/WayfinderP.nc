@@ -124,7 +124,7 @@ implementation{
         nqPair notSeen = {0,0};
         uint16_t missing;
         for(i=1;i<=maxNode;i++){
-            topoTable[source][i]=0;
+            topoTable[myLSP.id][i]=0;
         }
         for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE; i+=2){
             if(myLSP.payload[i] == 0){ break; }
@@ -132,10 +132,10 @@ implementation{
                 dbg(ROUTING_CHANNEL, "ERROR: ID > topo_size(%d)\n",topo_size);
             }
             else{
-                topoTable[source][payload[i]] = (float)payload[i+1]/255;
-                call routingTable.insert(source,seen);
-                if(!call routingTable.contains(payload[i])){
-                    call routingTable.insert(payload[i],notSeen);
+                topoTable[myLSP.id][myLSP.payload[i]] = (float)myLSP.payload[i+1]/255;
+                call routingTable.insert(myLSP.id,seen);
+                if(!call routingTable.contains(myLSP.payload[i])){
+                    call routingTable.insert(myLSP.payload[i],notSeen);
                 }
             }
             // {dbg(ROUTING_CHANNEL, "source: %d | seq: %d | dest: %d | quality: %d\n", source, myLSP.seq, payload[i], payload[i+1]);
