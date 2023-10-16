@@ -50,18 +50,18 @@ implementation{
         if(!call neighborhood.excessNeighbors()){ //If we know all our neighbors...
             for(i=0;i<numNeighbors;i++){
                 neighbor = call neighborhood.getNeighbor(i);
-                if(neighbor!=(uint32_t)prevNode){ //If the currently considered neighbor is not the previous source, propogate the wave to that node.
+                if(neighbor!=(uint32_t)prevNode && neighbor!=myWave.original_src){ //If the currently considered neighbor is not the previous source, propogate the wave to that node.
                     
                     char* payload_message = (char*) myWave.payload;
                     payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
-                    dbg(FLOODING_CHANNEL,"Propagating Flood sent to me by %d. Sending to %d\n", prevNode, neighbor);
+                    // if(myWave.original_src==3){dbg(ROUTING_CHANNEL,"Propagating Flood sent to me by %d. Sending to %d\n", prevNode, neighbor);}
                     
                     call waveSend.send(myPack,neighbor);
                 }
             }
         }
         else{ //If the table is full, there may be unknown neighbors! So broadcast as a safety measure (Less optimal, but still works).
-            dbg(FLOODING_CHANNEL,"Max Neighbors, so broadcasting flood wave...\n");
+            // if(myWave.original_src==3){dbg(ROUTING_CHANNEL,"Max Neighbors, so broadcasting flood wave...\n");}
             call waveSend.send(myPack,AM_BROADCAST_ADDR);
         }
     }
@@ -86,7 +86,7 @@ implementation{
             }
             //Otherwise, the packet is dead, don't propogate.
             else{
-                dbg(FLOODING_CHANNEL,"Dead Packet. Won't Propagate\n");
+                // if(myWave.original_src==3){dbg(ROUTING_CHANNEL,"Dead Packet. Won't Propagate\n");}
             }
         }
         //If both of the outer conditions are false, the packet has already been propogated, so drop it.
@@ -102,7 +102,9 @@ implementation{
         Copies the packet into memory and then posts the flood task for implementation of flooding. */
     event void PacketHandler.gotflood(uint8_t* incomingWave){
         memcpy(&myWave,incomingWave,FLOOD_PACKET_SIZE);
-        logFloodpack((floodpack*)incomingWave, FLOODING_CHANNEL);
+        // if(TOS_NODE_ID==3 && myWave.original_src==3){
+        //     logFloodpack((floodpack*)incomingWave, ROUTING_CHANNEL);
+        // }
         switch(myWave.protocol){
             case PROTOCOL_LINKSTATE:
                 // dbg(FLOODING_CHANNEL,"LSP Flood\n");

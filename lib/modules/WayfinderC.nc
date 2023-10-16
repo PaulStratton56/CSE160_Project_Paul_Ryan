@@ -1,3 +1,6 @@
+#include "../../includes/nqPair.h"
+
+
 configuration WayfinderC{
     provides interface Wayfinder;
 }
@@ -13,9 +16,12 @@ implementation{
     components floodingC;
     WayfinderP.flooding -> floodingC;
 
-    components new HashmapC(uint16_t, 32) as routingTable;
+    components new HashmapC(nqPair, 32) as routingTable;
     WayfinderP.routingTable -> routingTable; 
 
-   components new TimerMilliC() as lspTimer;
-   WayfinderP.lspTimer -> lspTimer;
+    components new TimerMilliC() as lspTimer;
+    WayfinderP.lspTimer -> lspTimer;
+
+    components new HeapC(32) as unexplored;
+    WayfinderP.unexplored -> unexplored;
 }

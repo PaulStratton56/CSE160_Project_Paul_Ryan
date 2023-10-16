@@ -178,4 +178,10 @@ implementation{
    command uint16_t Hashmap.maxSize(){
       return HASH_MAX_SIZE;
    }
+   command void Hashmap.clearValues(t temp){
+      int i=0;
+      for(i=0;i<numofVals;i++){
+         call Hashmap.insert(keys[i],temp);
+      }
+   }
 }

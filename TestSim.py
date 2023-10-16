@@ -151,11 +151,19 @@ def main():
 
     s.loadNoise("no_noise.txt")
 
-    s.addChannel(s.NEIGHBOR_CHANNEL)                                                
-    # s.addChannel(s.ROUTING_CHANNEL)                                                
+    # s.addChannel(s.NEIGHBOR_CHANNEL)    
+    s.addChannel(s.ROUTING_CHANNEL)                                                
     # s.addChannel(s.FLOODING_CHANNEL)
     s.bootAll()
     s.runTime(10)
-
+    print("======================Turning off 5=================")
+    s.moteOff(5)
+    s.runTime(10)
+    # print("======================Turning off 8=================")
+    # s.moteOff(8)
+    # s.runTime(10)
+    # print("======================Turning off 1=================")
+    # s.moteOff(1)
+    # s.runTime(10)
 if __name__ == '__main__':
     main()

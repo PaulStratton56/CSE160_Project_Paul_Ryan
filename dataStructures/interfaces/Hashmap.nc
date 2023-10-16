@@ -17,4 +17,5 @@ interface Hashmap<t>{
    command uint16_t size();
    command uint32_t * getKeys();
    command uint16_t maxSize();
+   command void clearValues(t temp);
 }

@@ -15,9 +15,9 @@ module neighborDiscoveryP{
 implementation{
     ndpack myPing; //Inner pack 
     pack myPack; //Outer SimpleSend pack
-    float decayRate=.25; //Alpha value of the exponentially weighted moving average reliability value for neighbors.
+    float decayRate=.7; //Alpha value of the exponentially weighted moving average reliability value for neighbors.
                          //Higher values place more emphasis on recent data.
-    uint8_t allowedQuality=100; //Quality threshold to consider a connection as valid.
+    uint8_t allowedQuality=10; //Quality threshold to consider a connection as valid.
                              //A quality below this value represents a 'too noisy' connection.
     uint8_t maxQuality = 255;
     uint16_t mySeq = 0; //Sequence of the broadcasted pings
@@ -72,7 +72,7 @@ implementation{
 
         //Loop through each neighbor and update link quality value.
         while(i<numNeighbors){
-            if(call neighborhood.contains(myNeighbors[i])){
+            if(call neighborhood.contains(myNeighbors[i]) && (call neighborhood.get(myNeighbors[i])).quality>0){
                 status=call neighborhood.get(myNeighbors[i]);
 
                 //If the expected reply packet from a node did not show up, decrease the quality of the link.
@@ -83,8 +83,10 @@ implementation{
 
                 //If the quality of a link is below a certain threshold, remove it from the considered list of neighbors.
                 if(status.quality<allowedQuality){
-                    dbg(NEIGHBOR_CHANNEL,"Removing %d,%d from my list for being less than %d.\n",myNeighbors[i],status.quality,allowedQuality);
-                    call neighborhood.remove(myNeighbors[i]);
+                    // dbg(NEIGHBOR_CHANNEL,"Removing %d,%d from my list for being less than %d.\n",myNeighbors[i],status.quality,allowedQuality);
+                    // call neighborhood.remove(myNeighbors[i]);
+                    status.quality = 0;
+                    call neighborhood.insert(myNeighbors[i],status);
                     signal neighborDiscovery.neighborUpdate();
                     numNeighbors -= 1;
                     i--;
@@ -175,6 +177,10 @@ implementation{
         return call neighborhood.getIndex(i);
     }
 
+    command uint8_t neighborDiscovery.getNeighborQuality(uint16_t i){
+        return (call neighborhood.get(i)).quality;
+    }
+
     //numNeighbors() returns the number of nodes currently considered neighbors.
     command uint16_t neighborDiscovery.numNeighbors(){
         return call neighborhood.size();
@@ -189,12 +195,10 @@ implementation{
         uint32_t* myNeighbors = call neighborhood.getKeys();
         uint16_t size = call neighborhood.size();
         int i=0;
-        linkquality status;
         assembledData[0]=2*size+1;
         for(i=0;i<size;i++){
             assembledData[2*i+1] = myNeighbors[i];
-            status = call neighborhood.get(myNeighbors[i]);
-            assembledData[2*i+2] = status.quality;
+            assembledData[2*i+2] = (call neighborhood.get(myNeighbors[i])).quality;
         }
         return &assembledData[0];
     }
