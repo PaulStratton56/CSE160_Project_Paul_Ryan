@@ -24,7 +24,8 @@ module Node{
    uses interface SimpleSend as Sender;
    uses interface neighborDiscovery as nd;
    uses interface flooding as flood;
-   uses interface Wayfinder as router;
+   uses interface Wayfinder;
+   uses interface Waysender as router;
    uses interface PacketHandler;
 
 
@@ -45,7 +46,7 @@ implementation{
 
          //When done booting, start the ND Ping timer.
          call nd.onBoot();
-         call router.onBoot();
+         call Wayfinder.onBoot();
 
       }else{
          //Retry until successful
@@ -86,6 +87,11 @@ implementation{
    event void CommandHandler.flood(uint8_t* payload){
       dbg(GENERAL_CHANNEL, "FLOOD EVENT\n");
       call flood.initiate(255, PROTOCOL_FLOOD, payload);  
+   }
+
+   event void CommandHandler.route(uint8_t dest, uint8_t* payload){
+      dbg(GENERAL_CHANNEL, "ROUTE EVENT\n");
+      call router.send(255, dest, PROTOCOL_ROUTING, payload);
    }
    
    event void CommandHandler.printNeighbors(){}

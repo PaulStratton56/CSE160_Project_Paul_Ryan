@@ -13,6 +13,7 @@ class TestSim:
     CMD_PING = 0
     CMD_NEIGHBOR_DUMP = 1
     CMD_ROUTE_DUMP=3
+    CMD_ROUTE = 10
     CMD_FLOOD = 31
     
     # CHANNELS - see includes/channels.h
@@ -122,8 +123,8 @@ class TestSim:
     def ping(self, source, dest, msg):
         self.sendCMD(self.CMD_PING, source, "{0}{1}".format(chr(dest),msg))
     
-    def flood(self, source, dest, msg):
-        self.sendCMD(self.CMD_FLOOD, source, "{0}{1}".format(chr(dest),msg))
+    def route(self, source, dest, msg):
+        self.sendCMD(self.CMD_ROUTE, source, "{0}{1}".format(chr(dest),msg))
 
     def flood(self,source,msg):
         self.sendCMD(self.CMD_FLOOD,source,"{0}{1}".format(chr(source),msg))

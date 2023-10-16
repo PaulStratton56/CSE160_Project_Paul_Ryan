@@ -119,8 +119,6 @@ implementation{
 
     /* == updateTopoTable == */
     task void updateTopoTable(){
-        uint8_t source = myLSP.id;
-        uint8_t* payload = (uint8_t*)myLSP.payload;
         int i=0;
         nqPair seen = {0,1};
         nqPair notSeen = {0,0};
@@ -129,8 +127,8 @@ implementation{
             topoTable[source][i]=0;
         }
         for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE; i+=2){
-            if(payload[i] == 0){ break; }
-            if(payload[i] > topo_size || source > topo_size){
+            if(myLSP.payload[i] == 0){ break; }
+            if(myLSP.payload[i] > topo_size || myLSP.id > topo_size){
                 dbg(ROUTING_CHANNEL, "ERROR: ID > topo_size(%d)\n",topo_size);
             }
             else{
@@ -162,10 +160,10 @@ implementation{
         lspSequence += 1;
         makeLSP(&myLSP, TOS_NODE_ID, lspSequence, &(assembledData[1]));//first byte tells length
         if(TOS_NODE_ID==3){dbg(ROUTING_CHANNEL,"Updating TopoTable because my neighbors changed\n");}
-        // logLSP(&myLSP,FLOODING_CHANNEL);
+        // logLSP(&myLSP,ROUTING_CHANNEL);
         post updateTopoTable();
         call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
-        dbg(ROUTING_CHANNEL, "Flooded new LSP\n");
+        dbg(ROUTING_CHANNEL, "Initiated LSP Flood\n");
     }
 
     event void lspTimer.fired(){
@@ -190,7 +188,7 @@ implementation{
     }
 
 
-    command uint16_t Wayfinder.getRoute(uint16_t dest){
+    command uint8_t Wayfinder.getRoute(uint8_t dest){
         //Called when the next node in a route is needed.
         //Quick lookup in the routing table. Easy peasy!
         return (call routingTable.get(dest)).neighbor;
@@ -198,7 +196,7 @@ implementation{
 
     command void Wayfinder.printTopo(){
         //Prints the topology.
-        int i, j, k, lastNode = maxNode+1, spacing = 2;
+        uint8_t i, j, k, lastNode = maxNode+1, spacing = 2;
         char row[(lastNode*spacing)+1];
         // sep[(lastNode*spacing)] = '\00';
 
@@ -241,8 +239,7 @@ implementation{
     event void flooding.gotLSP(uint8_t* payload){
         //When an LSP is received:
         //Update the Topo Table!
-        lsp* incomingLSP = (lsp*) payload;
-        memcpy(&myLSP,incomingLSP, sizeof(lsp));
+        memcpy(&myLSP,(lsp*)payload, sizeof(lsp));
         post receiveLSP();
     }
 

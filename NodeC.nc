@@ -35,7 +35,10 @@ implementation {
     Node.nd -> neighborDiscoveryC;
     
     components WayfinderC;
-    Node.router -> WayfinderC;
+    Node.Wayfinder -> WayfinderC;
+
+    components WaysenderC;
+    Node.router -> WaysenderC;
 
     components PacketHandlerC;
     Node.PacketHandler -> PacketHandlerC;
