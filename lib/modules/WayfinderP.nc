@@ -5,7 +5,8 @@ module WayfinderP{
 
     uses interface neighborDiscovery;
     uses interface flooding;
-    uses interface Hashmap<uint16_t> as routingTable;
+    uses interface Hashmap<uint8_t> as routingTable;
+    uses interface Hashmap<uint16_t> as sequences;
     uses interface Timer<TMilli> as lspTimer;
 }
 
@@ -39,15 +40,13 @@ implementation{
     }
     /* == updateTopoTable == */
     task void updateTopoTable(){
-        uint8_t source = myLSP.id;
-        uint8_t* payload = (uint8_t*)myLSP.payload;
         int i=0;
         for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE; i+=2){
-            if(payload[i] == 0){ break; }
-            if(payload[i] > topo_size || source > topo_size){
+            if(myLSP.payload[i] == 0){ break; }
+            if(myLSP.payload[i] > topo_size || myLSP.id > topo_size){
                 dbg(ROUTING_CHANNEL, "ERROR: ID > topo_size(%d)\n",topo_size);
             }
-            topoTable[source][payload[i]] = payload[i+1];
+            topoTable[myLSP.id][myLSP.payload[i]] = myLSP.payload[i+1];
             // dbg(ROUTING_CHANNEL, "source: %d | dest: %d | quality: %d | value: %d\n", source, payload[i], payload[i+1], topoTable[source][payload[i]]);
             call Wayfinder.printTopo();
 
@@ -63,10 +62,10 @@ implementation{
         memcpy(&assembledData, data, data[0]);
         lspSequence += 1;
         makeLSP(&myLSP, TOS_NODE_ID, lspSequence, &(assembledData[1]));//first byte tells length
-        logLSP(&myLSP,FLOODING_CHANNEL);
+        // logLSP(&myLSP,ROUTING_CHANNEL);
         post updateTopoTable();
         call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
-        dbg(ROUTING_CHANNEL, "Flooded new LSP\n");
+        dbg(ROUTING_CHANNEL, "Initiated LSP Flood\n");
     }
 
     event void lspTimer.fired(){
@@ -79,12 +78,14 @@ implementation{
     task void receiveLSP(){
         //Posted when Flooding signals an LSP.
         //Update a Topology table with the new LSP.
-        //check sequence
-        post updateTopoTable();
+        if(!call sequences.contains(myLSP.id) || call sequences.get(myLSP.id)<myLSP.seq){
+            call sequences.insert(myLSP.id, myLSP.seq);
+            post updateTopoTable();
+        }
     }
 
 
-    command uint16_t Wayfinder.getRoute(uint16_t dest){
+    command uint8_t Wayfinder.getRoute(uint8_t dest){
         //Called when the next node in a route is needed.
         //Quick lookup in the routing table. Easy peasy!
         return call routingTable.get(dest);
@@ -92,7 +93,7 @@ implementation{
 
     command void Wayfinder.printTopo(){
         //Prints the topology.
-        int i, j, k, lastNode = 10, spacing = 2;
+        uint8_t i, j, k, lastNode = 10, spacing = 2;
         char row[(lastNode*spacing)+1];
         // sep[(lastNode*spacing)] = '\00';
 
@@ -125,8 +126,7 @@ implementation{
     event void flooding.gotLSP(uint8_t* payload){
         //When an LSP is received:
         //Update the Topo Table!
-        lsp* incomingLSP = (lsp*) payload;
-        memcpy(&myLSP,incomingLSP, sizeof(lsp));
+        memcpy(&myLSP,(lsp*)payload, sizeof(lsp));
         post receiveLSP();
     }
 

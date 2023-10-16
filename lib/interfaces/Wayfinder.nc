@@ -1,5 +1,5 @@
 interface Wayfinder{
-    command uint16_t getRoute(uint16_t dest);
+    command uint8_t getRoute(uint8_t dest);
     command void onBoot();
     command void printTopo();
 }

@@ -199,29 +199,22 @@ implementation{
         return &assembledData[0];
     }
 
-    //printMyNeighbors() prints a list of neighbors to the debug console.
-    command void neighborDiscovery.printMyNeighbors(){//yuck!
-        //Note: DOES NOT WORK FOR MULTI-DIGIT NODES
-        uint16_t size = call neighborhood.size();
-        char sNeighbor[] = "";
-        char buffer[3*size];
-        uint32_t neighbor = 0;
-        int i=0;
-        int bufferIndex=0;
+    /* == printMyNeighbors() ==
+        prints a list of neighbors to the NEIGHBOR_CHANNEL. */
+    command void neighborDiscovery.printMyNeighbors(){//not yuck!
+        uint8_t size = call neighborhood.size();
+        char neighbors[(size*5)+1];
+        int i;
         uint32_t* myNeighbors = call neighborhood.getKeys();
-
-        //Manually manipulate the buffer string to print what is needed.
-        for (i=0;i<size;i++){
-            neighbor = myNeighbors[i];
-            sprintf(sNeighbor,"%u", (unsigned int)neighbor);
-            buffer[bufferIndex]=sNeighbor[0];
-            buffer[bufferIndex+1]=',';
-            buffer[bufferIndex+2]=' ';
-            bufferIndex+=3;
+        for(i = 0; i < size*5; i+=5){
+            neighbors[i] = (myNeighbors[i/5] >= 100 ? '0' + (uint8_t)(myNeighbors[i/5]/100):' ');
+            neighbors[i+1] = ((myNeighbors[i/5] >= 10) ? '0' + (uint8_t)((myNeighbors[i/5]%100)/10):' ');
+            neighbors[i+2] = '0' + (uint8_t)(myNeighbors[i/5]%10);
+            neighbors[i+3] = ',';
+            neighbors[i+4] = ' ';
         }
-        buffer[bufferIndex-2]='\00';//dont need last , and space
-        
-        dbg(NEIGHBOR_CHANNEL,"My Neighbors are: %s\n",buffer);
+        neighbors[size*5] = '\00';
+        dbg(NEIGHBOR_CHANNEL,"My Neighbors are: %s\n",neighbors);
     }
 
     /*== makeNeighborPack(...) ==
