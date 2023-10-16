@@ -84,6 +84,7 @@ implementation{
                     signal CommandHandler.flood(&buff[1]);
                     break;
 
+                //Routing, however, needs a destination.
                 case CMD_ROUTE:
                     dbg(COMMAND_CHANNEL, "Command Type: Route | Payload: %s\n",&buff[1]);
                     signal CommandHandler.route(buff[0], &buff[1]);

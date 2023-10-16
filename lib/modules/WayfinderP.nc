@@ -19,52 +19,26 @@ implementation{
     uint16_t lspSequence = 0;
     uint8_t assembledData[2*32+1];
     bool sendLSPs = FALSE;
-    // nqPair info;
+
+    //Function declarations
     void makeLSP(lsp* LSP, uint16_t id, uint16_t seq, uint8_t* payload);
     void printRoutingTable();
+    uint16_t gotAllExpectedLSPs();
 
-    command void Wayfinder.onBoot(){
-        //initialize topo to 0
-        int i=0;
-        int j=0;
-        for(i = 0; i < topo_size; i++){
-            for(j = 0; j < topo_size; j++){
-                topoTable[i][j] = 0;
-            }
-        }
-        maxNode = TOS_NODE_ID;
-        // dbg(ROUTING_CHANNEL, "Initialized Topo Table\n");
-        // call Wayfinder.printTopo();
-        call lspTimer.startOneShot(8000);
-        // info.neighbor = TOS_NODE_ID;
-        // info.quality = .456;
-    }
-
+    /* == findPaths() ==
+        Computes a routing table using Dijkstra on the stored topology table.
+        Posted whenever recomputing is necessary. */
     task void findPaths(){
-        //Posted when recomputing routing table is necessary.
-        //Using the Topology table, run Dijkstra to update a routing table.
-        /*if(TOS_NODE_ID==3){//testing heap
-            dbg(ROUTING_CHANNEL,"Finding Shortest Paths\n");
-            call unexplored.insert(info);
-            info.quality*=17;
-            info.quality = info.quality - (int) info.quality;
-            call unexplored.print();
-            if(info.quality>.8){
-                call unexplored.extract();
-                call unexplored.extract();
-                call unexplored.print();
-            }
-        }*/
-        int i=0;
+        uint8_t i=0;
         float potentialQuality;
         nqPair temp = {0,0};
         nqPair current = {TOS_NODE_ID, 1};
-        // dbg(ROUTING_CHANNEL, "Running Dijkstra\n");
-        // call Wayfinder.printTopo();
+
         call routingTable.clearValues(temp);
         call unexplored.insert(current);
         call routingTable.insert(TOS_NODE_ID,current);
 
+        // Update the routing table with neighbor qualities.
         for(i=1;i<=maxNode;i++){
             if(i!=TOS_NODE_ID && topoTable[TOS_NODE_ID][i]>0){
                 temp.neighbor = i;
@@ -74,16 +48,17 @@ implementation{
             }
         }
 
+        //Running Dijkstra on the "unexplored" heap until we have a routing table!
         while(call unexplored.size() > 0){
-            assignNQP(&current,call unexplored.extract());            
+            assignNQP(&current,call unexplored.extract());
             if(current.quality == (call routingTable.get(current.neighbor)).quality){
-                // dbg(ROUTING_CHANNEL, "Currently Considering: Node %d with Quality %f\n",current.neighbor,current.quality);
                 for(i=1;i<=maxNode;i++){
                     if(i!=current.neighbor){
                         potentialQuality = current.quality*topoTable[current.neighbor][i];
+
                         if(potentialQuality > (call routingTable.get(i)).quality){
-                            // dbg(ROUTING_CHANNEL, "Going to %d from %d with Quality %f is better than with %f\n",i,current.neighbor,potentialQuality,(call routingTable.get(i)).quality);
                             call unexplored.insertPair(i,potentialQuality);
+
                             temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;
                             temp.quality = potentialQuality;
                             call routingTable.insert(i,temp);
@@ -92,38 +67,34 @@ implementation{
                 }
             }
         }
+
         temp.neighbor=0;
         temp.quality=1;
+
         for(i=0;i<call routingTable.size();i++){
             if((call routingTable.get(call routingTable.getIndex(i))).neighbor==0){
                 call routingTable.insert(call routingTable.getIndex(i),temp);
             }
         }
-        //printRoutingTable();
+
+
     }
 
-    uint16_t gotAllExpectedLSPs(){
-        uint16_t i=0;
-        int numNodes = call routingTable.size();
-        uint32_t key;
-        for(i=0;i<numNodes;i++){
-            key = call routingTable.getIndex(i);
-            if((call routingTable.get(key)).quality==0){
-                return key;
-            }
-        }
-        return 0;
-    }
-
-    /* == updateTopoTable == */
+    /* == updateTopoTable ==
+        Updates the topology table using a received LSP. 
+        Commonly called when receiving (or creating) a new LSP. */
     task void updateTopoTable(){
-        int i=0;
+        uint16_t i=0;
         nqPair seen = {0,1};
         nqPair notSeen = {0,0};
         uint16_t missing;
+
+        //Initialize all of the LSP node's neighbors to 0.
         for(i=1;i<=maxNode;i++){
             topoTable[myLSP.id][i]=0;
         }
+
+        //Check all NQ pairs in the lsp, updating quality if necessary.
         for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE; i+=2){
             if(myLSP.payload[i] == 0){ break; }
             if(myLSP.payload[i] > topo_size || myLSP.id > topo_size){
@@ -136,9 +107,9 @@ implementation{
                     call routingTable.insert(myLSP.payload[i],notSeen);
                 }
             }
-            // {dbg(ROUTING_CHANNEL, "source: %d | seq: %d | dest: %d | quality: %d\n", source, myLSP.seq, payload[i], payload[i+1]);
-            // call Wayfinder.printTopo();
         }
+
+        //If we have an LSP from all nodes we know exist, run Dijkstra!
         missing = gotAllExpectedLSPs();
         if(missing==0){
             post findPaths();
@@ -148,55 +119,65 @@ implementation{
         }
     }
 
-
+    /* == sendLSP ==
+        Posted when NT is updated
+        Create an LSP and flood it to the network. */
     task void sendLSP(){
-        //Posted when NT is updated
-        //Create an LSP and flood it to the network.
         uint8_t* data = call neighborDiscovery.assembleData();
+
         memcpy(&assembledData, data, data[0]);
         assembledData[assembledData[0]]=0;
+
         lspSequence += 1;
         makeLSP(&myLSP, TOS_NODE_ID, lspSequence, &(assembledData[1]));//first byte tells length
-        //dbg(ROUTING_CHANNEL,"Updating TopoTable because my neighbors changed\n");
-        // logLSP(&myLSP,ROUTING_CHANNEL);
-        post updateTopoTable();
         call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
-        //dbg(ROUTING_CHANNEL, "Initiated LSP Flood\n");
+        post updateTopoTable();
     }
 
-    event void lspTimer.fired(){
-        // dbg(ROUTING_CHANNEL,"LSP Timer Fired\n");
-        sendLSPs = TRUE;
-        post sendLSP();
-        call lspTimer.startOneShot(256000);
-    }
-
+    /* == receiveLSP ==
+        Posted when Flooding signals an LSP.
+        Save the incoming LSP, and update the stored topology using it. */
     task void receiveLSP(){
-        //Posted when Flooding signals an LSP.
-        //Update a Topology table with the new LSP.
-        //check sequence
+        //Check if this is the largest ID we've seen so far. Used when computing if we SHOULD run dijkstra.
         if(myLSP.id>maxNode){
             maxNode=myLSP.id;
         }
+        //Checking sequence to see if valid
         if(myLSP.seq > topoTable[myLSP.id][0]){
-            //dbg(ROUTING_CHANNEL,"Updating TopoTable because %d's neighbors changed\n", myLSP.id);
             topoTable[myLSP.id][0] = myLSP.seq;
             post updateTopoTable();
         }
     }
 
+    // onBoot: initializes a Topology Table to all "no connections"
+    command void Wayfinder.onBoot(){
+        uint8_t i=0, j=0;
+        for(i = 0; i < topo_size; i++){
+            for(j = 0; j < topo_size; j++){
+                topoTable[i][j] = 0;
+            }
+        }
+        maxNode = TOS_NODE_ID;
 
+        //Start a timer to stall before we consider sending LSPs.
+        call lspTimer.startOneShot(8000);
+    }
+
+    // getRoute(...) returns the next hop for routing.
     command uint8_t Wayfinder.getRoute(uint8_t dest){
         //Called when the next node in a route is needed.
         //Quick lookup in the routing table. Easy peasy!
         return (call routingTable.get(dest)).neighbor;
     }
 
+    /* == printTopo() ==
+        Prints the topology matrix, read as "Row ID has neighbor Column ID with quality (Row,Column)".
+        Generalizes the qualities. 3 is excellent, 1 is horrible, blank is no detected connection.
+        Due to the nature of the networks we're working with so far, this should be diagonally symmetric. */
     command void Wayfinder.printTopo(){
         //Prints the topology.
         uint8_t i, j, k, lastNode = maxNode+1, spacing = 2;
         char row[(lastNode*spacing)+1];
-        // sep[(lastNode*spacing)] = '\00';
 
         dbg(ROUTING_CHANNEL, "Topo:\n");
         for(i = 0 ; i < lastNode; i++){
@@ -216,6 +197,47 @@ implementation{
         }
     }
 
+    // lspTimer.fired: When this timer fires, allow sending LSPs and send one automatically!
+    event void lspTimer.fired(){
+        sendLSPs = TRUE;
+        post sendLSP();
+        //Restart this timer to very occasionally resend LSPs.
+        call lspTimer.startOneShot(256000);
+    }
+
+    /* == neighborDiscovery.neighborUpdate() ==
+        Signaled from ND module when the list of neighbors changes (adding or dropping specifically)
+        If allowed, send an LSP to update the network of this topology change. */
+    event void neighborDiscovery.neighborUpdate(){
+        if(sendLSPs){
+            post sendLSP();
+        }
+    }
+
+    /* == flooding.gotLSP(...) ==
+        Signaled when the flooding module receives an LSP packet.
+        Copy this LSP into memory and update the topology using this new LSP. */
+    event void flooding.gotLSP(uint8_t* payload){
+        memcpy(&myLSP,(lsp*)payload, sizeof(lsp));
+        post receiveLSP();
+    }
+
+    // gotAllExpectedLSPs: Checks if we have an LSP from all nodes we know exist.
+    uint16_t gotAllExpectedLSPs(){
+        uint16_t i=0;
+        uint8_t numNodes = call routingTable.size();
+        uint32_t key;
+
+        for(i=0;i<numNodes;i++){
+            key = call routingTable.getIndex(i);
+            if((call routingTable.get(key)).quality==0){
+                return key;
+            }
+        }
+        return 0;
+    }
+
+    // printRoutingTable() prints the next hops stored in the routing table, currently.
     void printRoutingTable(){
         int i=1;
         nqPair temp;
@@ -226,21 +248,10 @@ implementation{
         }
     }
 
-    event void neighborDiscovery.neighborUpdate(){
-        //When NT is updated:
-        //Send a new LSP
-        if(sendLSPs){
-            post sendLSP();
-        }
-    }
-
-    event void flooding.gotLSP(uint8_t* payload){
-        //When an LSP is received:
-        //Update the Topo Table!
-        memcpy(&myLSP,(lsp*)payload, sizeof(lsp));
-        post receiveLSP();
-    }
-
+    /* == makeLSP(...) ==
+        Adds LSP headers to a payload.
+        id: The id of the sending node.
+        The rest are self-explanatory. */
     void makeLSP(lsp* LSP, uint16_t id, uint16_t seq, uint8_t* payload){
         LSP->id = id;
         LSP->seq = seq;

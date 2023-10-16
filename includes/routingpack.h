@@ -8,10 +8,15 @@ enum{
 	ROUTING_PACKET_MAX_PAYLOAD_SIZE = 25 - ROUTING_PACKET_HEADER_LENGTH,
 };
 
-/*
-== routingpack ==
-
-*/
+/* == routingpack ==
+	This pack contains headers for the routing implementation.
+	Uses SimpleSend as a link-layer interface to send.
+	original_src: Contains the original source of the routing message (for replies, etc.)
+	dest: The destination of the routing packet (for routing, etc.)
+	seq: Sequence number to eliminate redundant routing packets (just in case!)
+	ttl: Time to live for a routing pack (just in case!)
+	protocol: Used for higher level modules
+	payload: Used by higher level modules */
 typedef nx_struct routingpack{
 	nx_uint8_t original_src;
 	nx_uint8_t dest;
@@ -21,10 +26,7 @@ typedef nx_struct routingpack{
 	nx_uint8_t payload[FLOOD_PACKET_MAX_PAYLOAD_SIZE];
 }routingpack;
 
-/*
-== logFloodPack(...) ==
-Prints the parameters of a given floodpack to a given channel.
-*/
+// logRoutingpack(...): Prints the parameters of a given routingpack to a given channel.
 void logRoutingpack(routingpack* input, char channel[]){
 	dbg(channel, "Og Src: %d | Dest: %d | Seq: %d | ttl: %d | Protocol: %d | Payload: %s\n",
 	input->original_src,input->dest,input->seq,input->ttl,input->protocol,(char*) input->payload);

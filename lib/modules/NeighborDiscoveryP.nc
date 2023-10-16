@@ -23,7 +23,7 @@ implementation{
     uint16_t mySeq = 0; //Sequence of the broadcasted pings
     uint8_t assembledData[2*32+1];//2*hashmap max size
 
-
+    //Function declarations
     error_t makeNDpack(ndpack* packet, uint8_t src, uint16_t seq, uint8_t protocol, uint8_t* payload);
     
     /*== ping() ==
@@ -43,20 +43,10 @@ implementation{
         call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,PROTOCOL_NEIGHBOR,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
 
         //Send the packet using SimpleSend.
-        dbg(NEIGHBOR_CHANNEL,"Pinged Neighbors\n");
-        // logNDpack(&myPing,NEIGHBOR_CHANNEL);
         call pingSend.send(myPack,AM_BROADCAST_ADDR);
 
         //Restart the timer.
         call pingTimer.startOneShot(4000);
-    }
-
-    /*== onBoot() ==
-        The first thing that runs in this module.
-        Called from Node.nc's "startDone" function.
-        Posts a ping task to start the timer and introduce a node to its neighbors. */
-    command void neighborDiscovery.onBoot(){
-        post ping();
     }
 
     /*== updateLinks() ==
@@ -78,13 +68,12 @@ implementation{
                 //If the expected reply packet from a node did not show up, decrease the quality of the link.
                 if(!status.recent){
                     status.quality = (uint8_t)((1-decayRate)*status.quality);
-                    dbg(NEIGHBOR_CHANNEL,"Missed pingReply from %d, quality is now %d\n",myNeighbors[i],status.quality);
+                    dbg(NEIGHBOR_CHANNEL,"No reply from %d, Updated quality to %d\n",myNeighbors[i],status.quality);
                 }
 
                 //If the quality of a link is below a certain threshold, remove it from the considered list of neighbors.
                 if(status.quality<allowedQuality){
-                    // dbg(NEIGHBOR_CHANNEL,"Removing %d,%d from my list for being less than %d.\n",myNeighbors[i],status.quality,allowedQuality);
-                    // call neighborhood.remove(myNeighbors[i]);
+                    dbg(NEIGHBOR_CHANNEL,"Removed %d (Quality %d > Threshold %d).\n",myNeighbors[i],status.quality,allowedQuality);
                     status.quality = 0;
                     call neighborhood.insert(myNeighbors[i],status);
                     signal neighborDiscovery.neighborUpdate();
@@ -98,16 +87,6 @@ implementation{
             }
             i++;
         }
-    }
-    
-    /*== pingTimer.fired() ==
-        signaled when pingTimer expires.
-        Posts updateLinks and sends out a ping.
-        The ping() event also restarts this timer to create a loop.
-        (This may change to call the timer in the fired() event, depending on later issues.) */
-    event void pingTimer.fired(){
-        post updateLinks();
-        post ping();
     }
 
     /*== respondtoPingRequest() ==
@@ -123,8 +102,8 @@ implementation{
         call pingSend.makePack(&myPack,TOS_NODE_ID,dest,PROTOCOL_NEIGHBOR,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
 
         //Then, send it.
-        dbg(NEIGHBOR_CHANNEL,"Responding to Ping Request from %hhu\n",dest);
         call pingSend.send(myPack,myPack.dest);
+        dbg(NEIGHBOR_CHANNEL,"Replied to neighbor ID %hhu\n",dest);
     }
 
     /*== respondtoPingReply() ==
@@ -133,45 +112,34 @@ implementation{
     task void respondtoPingReply(){
         linkquality status;
 
-        //If the link is known, increase the quality of that link (because a reply was found)
-        if(call neighborhood.contains(myPing.src)){
+        
+        if(call neighborhood.contains(myPing.src)){ //If the link is known, increase the quality of that link (because a reply was found)
             status = call neighborhood.get(myPing.src);
             status.quality = (uint8_t)(maxQuality*decayRate) + (uint8_t)((1-decayRate)*status.quality);
-            dbg(NEIGHBOR_CHANNEL,"Got ping reply from %d, quality is now %d\n",myPing.src,status.quality);
+            dbg(NEIGHBOR_CHANNEL,"Reply from %d, Updated quality to %d\n",myPing.src,status.quality);
         }
-        //Otherwise, the link is new, so assume it's a perfect link.
-        else{
-            dbg(NEIGHBOR_CHANNEL,"Adding new neighbor %hhu...\n",myPing.src);
-            signal neighborDiscovery.neighborUpdate();
+        else{ //Otherwise, create and signal the creation of a perfect new link.
             status.quality=maxQuality;
+            dbg(NEIGHBOR_CHANNEL,"Added Neighbor ID %hhu\n",myPing.src);
+
+            signal neighborDiscovery.neighborUpdate();
         }
 
-        //If a reply is inbound, mark that a reply was recently seen.
+        //If a reply is inbound, mark that a reply was recently seen (To prevent decrementing quality later)
         status.recent=TRUE;
 
         //Insert the updated link data into a table.
         call neighborhood.insert(myPing.src,status);
     }
-    
-    /*== PacketHandler.gotPing() ==
-        Signaled from the PacketHandler module when receiving an incoming NeighborDiscovery packet.
-        Checks the protocol of the ndpack previously stored in the SimpleSend pack, and responds appropriately.
-        Also copies the pack into NeighborDiscovery memory to prevent data loss. */
-    event void PacketHandler.gotPing(uint8_t* payload){
-        memcpy(&myPing, payload,ND_PACKET_SIZE);
 
-        //Using the inner packet protocol of the inbound packet, determine whether it is a ping or a reply, and respond appropriately.
-        if(myPing.protocol == PROTOCOL_PING){
-            post respondtoPingRequest();
-        }
-        else if(myPing.protocol == PROTOCOL_PINGREPLY){
-            post respondtoPingReply();
-        }
-        else{
-            dbg(GENERAL_CHANNEL,"Packet Handler Error: Incorrectly received PROTOCOL_NEIGHBOR packet payload\n");
-        }
+    /*== onBoot() ==
+        The first thing that runs in this module.
+        Called from Node.nc's "startDone" function.
+        Posts a ping task to start the timer and introduce a node to its neighbors. */
+    command void neighborDiscovery.onBoot(){
+        post ping();
     }
-
+    
     //getNeighbors() returns a list of node IDs that are considered neighbors.
     command uint32_t neighborDiscovery.getNeighbor(uint16_t i){
         return call neighborhood.getIndex(i);
@@ -191,6 +159,7 @@ implementation{
         return call neighborhood.size()==call neighborhood.maxSize();
     }
 
+    //assembleData() returns a list of neighbors and their qualities.
     command uint8_t* neighborDiscovery.assembleData(){
         uint32_t* myNeighbors = call neighborhood.getKeys();
         uint16_t size = call neighborhood.size();
@@ -203,9 +172,8 @@ implementation{
         return &assembledData[0];
     }
 
-    /* == printMyNeighbors() ==
-        prints a list of neighbors to the NEIGHBOR_CHANNEL. */
-    command void neighborDiscovery.printMyNeighbors(){//not yuck!
+    // printMyNeighbors() prints a list of neighbors to the NEIGHBOR_CHANNEL.
+    command void neighborDiscovery.printMyNeighbors(){//not yuck anymore!
         uint8_t size = call neighborhood.size();
         char neighbors[(size*5)+1];
         int i;
@@ -221,6 +189,35 @@ implementation{
         dbg(NEIGHBOR_CHANNEL,"My Neighbors are: %s\n",neighbors);
     }
 
+    /*== pingTimer.fired() ==
+        signaled when pingTimer expires.
+        Posts updateLinks and sends out a ping.
+        The ping() event also restarts this timer to create a loop.
+        (This may change to call the timer in the fired() event, depending on later issues.) */
+    event void pingTimer.fired(){
+        post updateLinks();
+        post ping();
+    }
+
+    /*== PacketHandler.gotPing() ==
+        Signaled from the PacketHandler module when receiving an incoming NeighborDiscovery packet.
+        Checks the protocol of the ndpack previously stored in the SimpleSend pack, and responds appropriately.
+        Also copies the pack into NeighborDiscovery memory to prevent data loss. */
+    event void PacketHandler.gotPing(uint8_t* payload){
+        memcpy(&myPing, payload,ND_PACKET_SIZE);
+
+        //Using the inner packet protocol of the inbound packet, determine whether it is a ping or a reply, and respond appropriately.
+        if(myPing.protocol == PROTOCOL_PING){
+            post respondtoPingRequest();
+        }
+        else if(myPing.protocol == PROTOCOL_PINGREPLY){
+            post respondtoPingReply();
+        }
+        else{
+            dbg(GENERAL_CHANNEL,"Packet Handler Error: Incorrectly received PROTOCOL_NEIGHBOR packet payload\n");
+        }
+    }
+
     /*== makeNeighborPack(...) ==
         Creates a pack containing all useful information for the NeighborDiscovery module. 
         Usually encapsulated in the payload of a SimpleSend packet, and passed by the packet handler.
@@ -228,8 +225,7 @@ implementation{
         src: The source of the packet (used to reply, etc.)
         seq: The sequence number of the packet (used for statistics, etc.)
         protocol: Determines whether the packet is a request or a reply (to respond appropriately)
-        payload: Contains a message or higher level packets.
-    */
+        payload: Contains a message or higher level packets. */
     error_t makeNDpack(ndpack* packet, uint8_t src, uint16_t seq, uint8_t protocol, uint8_t* payload){
         packet->src = src;
         packet->seq = seq;

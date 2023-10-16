@@ -17,21 +17,10 @@ implementation{
     floodpack myWave;
     pack myPack;
 
-    //Function prototype
+    //Function declarations
     error_t makeFloodPack(floodpack* packet, uint16_t o_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload);
-    task void broadsend();
-    task void flood();
 
-    //interface for another module initiating a flood
-    command void flooding.initiate(uint8_t ttl, uint8_t protocol, uint8_t* payload){
-        floodSequence+=1;
-
-        makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, protocol, payload);
-        //Encapsulate pack in a SimpleSend packet and broadcast it!
-        post flood();
-    }
-
-    /*== broadsend() ==
+    /* == broadsend() ==
         After an incoming packet is received and stored in myWave, 
         broadcasts a packet to all neighbors EXCEPT the source of the incoming packet. */
     task void broadsend(){
@@ -50,51 +39,45 @@ implementation{
         if(!call neighborhood.excessNeighbors()){ //If we know all our neighbors...
             for(i=0;i<numNeighbors;i++){
                 neighbor = call neighborhood.getNeighbor(i);
-                if(neighbor!=(uint32_t)prevNode && neighbor!=myWave.original_src){ //If the currently considered neighbor is not the previous source, propogate the wave to that node.
-                    
+                if(neighbor!=(uint32_t)prevNode && neighbor!=myWave.original_src){ //If the currently considered neighbor is not the previous or original source, propogate the wave to that node.
                     char* payload_message = (char*) myWave.payload;
-                    payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
-                    // if(myWave.original_src==3){dbg(ROUTING_CHANNEL,"Propagating Flood sent to me by %d. Sending to %d\n", prevNode, neighbor);}
-                    
+                    payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00'; //add null terminator to end of payload to ensure end of string
                     call waveSend.send(myPack,neighbor);
                 }
             }
         }
         else{ //If the table is full, there may be unknown neighbors! So broadcast as a safety measure (Less optimal, but still works).
-            // if(myWave.original_src==3){dbg(ROUTING_CHANNEL,"Max Neighbors, so broadcasting flood wave...\n");}
             call waveSend.send(myPack,AM_BROADCAST_ADDR);
         }
     }
 
-    /*== flood() ==
+    /* == flood() ==
         Task to handle floodPacks.
         Checks if flooding of an incoming packet is necessary. 
         If so, call broadsend to propogate flooding message. */
     task void flood(){
-        //Firstly, let's see if the floodPack has anything useful.
-
-        //If the original source hasn't flooded a packet using this node yet,
-        //OR the last packet seen by this node from the original source has an older sequence number, the message SHOULD send.
+        //If we havent seen a flood from the source before, or the sequence number from the node is newer, send the message.
         if(!call packets.contains(myWave.original_src) || call packets.get(myWave.original_src)<myWave.seq){
-            //If the packet's TTL is still valid, broadsend the packet.
-            if(myWave.ttl>0){
-                //Update the hash table with the most recent sequence number.
-                call packets.insert(myWave.original_src,myWave.seq);
-                
-                call neighborhood.printMyNeighbors();
+            if(myWave.ttl>0){ //Broadsend if valid TTL
+                call packets.insert(myWave.original_src,myWave.seq); //Update sequence.
                 post broadsend();
             }
-            //Otherwise, the packet is dead, don't propogate.
-            else{
-                // if(myWave.original_src==3){dbg(ROUTING_CHANNEL,"Dead Packet. Won't Propagate\n");}
+            else{ //TTL expired, drop the packet.
+                // dbg(FLOODING_CHANNEL,"Stopping dead packet from %d\n",myWave.original_src);
             }
         }
-        //If both of the outer conditions are false, the packet has already been propogated, so drop it.
-        else{
-            char* payload_message = (char*) myWave.payload;
-            payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00';//add null terminator to end of payload to ensure end of string
-            //dbg(FLOODING_CHANNEL,"Already propagated '%s'. Duplicate came from %hhu\n",payload_message,myWave.prev_src);
+        else{ // Already propogated, drop the packet.
+            //dbg(FLOODING_CHANNEL,"Duplicate packet from %hhu\n",myWave.prev_src);
         }
+    }
+
+    // flooding.initiate: Used by other modules to initiate a flood. Seen in routing, etc. 
+    command void flooding.initiate(uint8_t ttl, uint8_t protocol, uint8_t* payload){
+        floodSequence+=1;
+
+        makeFloodPack(&myWave, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, protocol, payload);
+        //Encapsulate pack in a SimpleSend packet and broadcast it!
+        post flood();
     }
 
     /*==PacketHandler.gotflood(...)==
@@ -102,9 +85,6 @@ implementation{
         Copies the packet into memory and then posts the flood task for implementation of flooding. */
     event void PacketHandler.gotflood(uint8_t* incomingWave){
         memcpy(&myWave,incomingWave,FLOOD_PACKET_SIZE);
-        // if(TOS_NODE_ID==3 && myWave.original_src==3){
-        //logFloodpack((floodpack*)incomingWave, ROUTING_CHANNEL);
-        // }
         switch(myWave.protocol){
             case PROTOCOL_LINKSTATE:
                 //dbg(FLOODING_CHANNEL,"LSP Flood\n");
@@ -118,7 +98,6 @@ implementation{
         }
         post flood();
     }
-
 
     /*== makeFloodPack(...) ==
         Creates a pack containing all useful information for the Flooding module. 

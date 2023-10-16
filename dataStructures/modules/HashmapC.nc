@@ -30,6 +30,7 @@ implementation{
    uint32_t hash2(uint32_t k){
       return k%13;
    }
+
    uint32_t hash3(uint32_t k){
       return 1+k%11;
    }
@@ -71,7 +72,6 @@ implementation{
       dbg(HASHMAP_CHANNEL,"Can't insert Item into Full Hashmap.\n");
    }
 
-
 	// We keep an internal list of all the keys we have. This is meant to remove it
    // from that internal list.
    void removeFromKeyList(uint32_t k){
@@ -106,7 +106,6 @@ implementation{
 
    }
 
-
    command void Hashmap.remove(uint32_t k){
       uint32_t i=0;	uint32_t j=0;
       bool removed = 0;
@@ -126,7 +125,6 @@ implementation{
 
    }
 
-   
    command t Hashmap.get(uint32_t k){
       uint32_t i=0;	uint32_t j=0;
       do{
@@ -171,17 +169,19 @@ implementation{
       return keys;
    }
    
-
    command uint16_t Hashmap.size(){
       return numofVals;
    }
+
    command uint16_t Hashmap.maxSize(){
       return HASH_MAX_SIZE;
    }
+
    command void Hashmap.clearValues(t temp){
       int i=0;
       for(i=0;i<numofVals;i++){
          call Hashmap.insert(keys[i],temp);
       }
    }
+   
 }
