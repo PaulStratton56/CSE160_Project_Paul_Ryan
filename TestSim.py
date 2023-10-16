@@ -155,7 +155,7 @@ def main():
     # s.addChannel(s.NEIGHBOR_CHANNEL)
     s.addChannel(s.COMMAND_CHANNEL)    
     s.addChannel(s.ROUTING_CHANNEL)                                                
-    s.addChannel(s.FLOODING_CHANNEL)
+    # s.addChannel(s.FLOODING_CHANNEL)
     s.bootAll()
     s.runTime(12)
     s.route(1,7,"Hello1!")
