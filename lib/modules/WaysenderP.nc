@@ -16,27 +16,30 @@ implementation{
 
     void makeRoutingPack(routingpack* routePack, uint8_t original_src, uint8_t dest, uint16_t seq, uint8_t ttl, uint8_t protocol, uint8_t* payload);
 
+    task void forward(){
+        uint8_t nextHop = call router.getRoute(myRoute.dest);
+        if(nextHop == 0){
+            dbg(ROUTING_CHANNEL, "Not sure how to get to %d. Dropping Packet.\n", myRoute.dest);
+        }
+        else{
+            call sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
+            call sender.send(myPack, nextHop);
+            dbg(ROUTING_CHANNEL, "Sending '%s' to %d to get to %d\n",(char*)myRoute.payload, nextHop, myRoute.dest);
+        }
+    }
+
     command void Waysender.send(uint8_t ttl, uint8_t dest, uint8_t protocol, uint8_t* payload){
         //Called when a routing packet wants to be sent!
         //Sends a packet using a routing table.
-        uint8_t nextHop = call router.getRoute(dest);
-        if(nextHop == 0){
-            dbg(ROUTING_CHANNEL, "Not sure how to get there. Stopping.\n");
-        }
-        else{
-            routingSeq += 1;
-            makeRoutingPack(&myRoute, TOS_NODE_ID, dest, routingSeq, ttl, protocol, payload);
-            call sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
-            call sender.send(myPack, nextHop);
-            dbg(ROUTING_CHANNEL, "Sending '%s' to %d to get to %d\n",(char*)payload, nextHop, dest);
-        }
+        routingSeq+=1;
+        makeRoutingPack(&myRoute, TOS_NODE_ID, dest, routingSeq, ttl, protocol, payload);
+        post forward();
     }
 
     task void gotRoutedPacket(){
         //Posted when PacketHandler signals a routed packet.
         //Checks if I am the destination, and if not,
         //Forwards the packet according to the routing table.
-
         if(myRoute.dest == TOS_NODE_ID){
             switch(myRoute.protocol){
                 default:
@@ -45,14 +48,8 @@ implementation{
             }
         }
         else{
-            uint8_t nextHop = call router.getRoute(myRoute.dest);
-            
-            myRoute.ttl -= 1;
-            call sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
-            call sender.send(myPack, nextHop);
-            dbg(ROUTING_CHANNEL, "Dest: %d | Forwarded to: %d\n", myRoute.dest,nextHop);
+            post forward();
         }
-        
     }
 
     event void PacketHandler.gotRouted(uint8_t* incomingMsg){
