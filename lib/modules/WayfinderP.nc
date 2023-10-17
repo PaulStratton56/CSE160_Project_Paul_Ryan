@@ -199,6 +199,7 @@ implementation{
         }
     }
 
+    // getMissing() returns whether the node has an LSP from all nodes it knows it exists.
     command uint16_t Wayfinder.getMissing(){
         return gotAllExpectedLSPs();
     }
@@ -214,26 +215,14 @@ implementation{
         }
     }
 
-    void printExistenceTable(){
-        int i=1;
-        bool temp;
-        dbg(ROUTING_CHANNEL,"Existence Table:\n");
-        for(i=1;i<=maxNode;i++){
-            temp = call existenceTable.get(i);
-            if(temp){
-                dbg(ROUTING_CHANNEL,"I have seen %d's LSP\n",i);
-            }
-            else{
-                dbg(ROUTING_CHANNEL,"I haven't seen %d's LSP\n", i);
-            }
-        }
-    }
+    // DijkstraTimer.fired() forces a dijkstra implementation even if the full topology may not be known to allow for partial routing.
     event void DijkstraTimer.fired(){
         dbg(ROUTING_CHANNEL, "Missing LSP from %d, but Running Dijkstra anyway\n", gotAllExpectedLSPs());
         // printExistenceTable();
         call Wayfinder.printTopo();
         post findPaths();
     }
+    
     // lspTimer.fired: When this timer fires, allow sending LSPs and send one automatically!
     event void lspTimer.fired(){
         sendLSPs = TRUE;
@@ -258,6 +247,22 @@ implementation{
         memcpy(&myLSP,(lsp*)payload, sizeof(lsp));
         // dbg(ROUTING_CHANNEL,"Got LSP from %d\n", myLSP.id);
         post receiveLSP();
+    }
+
+    // printExistenceTable() prints the nodes assumed to exist by this node, and whether it has an LSP from them.
+    void printExistenceTable(){
+        int i=1;
+        bool temp;
+        dbg(ROUTING_CHANNEL,"Existence Table:\n");
+        for(i=1;i<=maxNode;i++){
+            temp = call existenceTable.get(i);
+            if(temp){
+                dbg(ROUTING_CHANNEL,"I have seen %d's LSP\n",i);
+            }
+            else{
+                dbg(ROUTING_CHANNEL,"I haven't seen %d's LSP\n", i);
+            }
+        }
     }
 
     // gotAllExpectedLSPs: Checks if we have an LSP from all nodes we know exist.
