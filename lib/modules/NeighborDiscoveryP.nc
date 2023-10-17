@@ -119,7 +119,7 @@ implementation{
             dbg(NEIGHBOR_CHANNEL,"Reply from %d, Updated quality to %d\n",myPing.src,status.quality);
         }
         else{ //Otherwise, create and signal the creation of a perfect new link.
-            status.quality=maxQuality;
+            status.quality=decayRate*maxQuality;
             dbg(NEIGHBOR_CHANNEL,"Added Neighbor ID %hhu\n",myPing.src);
 
             signal neighborDiscovery.neighborUpdate();

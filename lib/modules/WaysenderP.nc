@@ -19,15 +19,20 @@ implementation{
 
     // forward: forwards the received packet according to the routing table.
     task void forward(){
-        uint8_t nextHop = call router.getRoute(myRoute.dest);
-        if(nextHop == 0){ // If the next hop is unknown, stop.
-            call router.printRoutingTable();
-            dbg(ROUTING_CHANNEL, "Not sure how to get to %d. Dropping Packet.\n", myRoute.dest);
+        if(myRoute.ttl>0){
+            uint8_t nextHop = call router.getRoute(myRoute.dest);
+            if(nextHop == 0){ // If the next hop is unknown, stop.
+                call router.printRoutingTable();
+                dbg(ROUTING_CHANNEL, "Not sure how to get to %d. Dropping Packet.\n", myRoute.dest);
+            }
+            else{ // Otherwise, forward the pack using Simplesend.
+                call sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
+                call sender.send(myPack, nextHop);
+                dbg(ROUTING_CHANNEL, "Sending '%s' to %d to get to %d\n",(char*)myRoute.payload, nextHop, myRoute.dest);
+            }
         }
-        else{ // Otherwise, forward the pack using Simplesend.
-            call sender.makePack(&myPack, TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &myRoute, PACKET_MAX_PAYLOAD_SIZE);
-            call sender.send(myPack, nextHop);
-            dbg(ROUTING_CHANNEL, "Sending '%s' to %d to get to %d\n",(char*)myRoute.payload, nextHop, myRoute.dest);
+        else{
+            dbg(ROUTING_CHANNEL, "Dead Packet. Won't Forward\n");
         }
     }
 
