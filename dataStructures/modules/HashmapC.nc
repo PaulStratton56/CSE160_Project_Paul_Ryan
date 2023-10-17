@@ -160,9 +160,7 @@ implementation{
    }
 
    command bool Hashmap.isEmpty(){
-      if(numofVals==0)
-         return TRUE;
-      return FALSE;
+      return numofVals==0;
    }
 
    command uint32_t* Hashmap.getKeys(){

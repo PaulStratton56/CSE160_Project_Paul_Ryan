@@ -40,8 +40,6 @@ implementation{
             for(i=0;i<numNeighbors;i++){
                 neighbor = call neighborhood.getNeighbor(i);
                 if(neighbor!=(uint32_t)prevNode && neighbor!=myWave.original_src){ //If the currently considered neighbor is not the previous or original source, propogate the wave to that node.
-                    char* payload_message = (char*) myWave.payload;
-                    payload_message[FLOOD_PACKET_MAX_PAYLOAD_SIZE] = '\00'; //add null terminator to end of payload to ensure end of string
                     call waveSend.send(myPack,neighbor);
                 }
             }
@@ -63,11 +61,11 @@ implementation{
                 post broadsend();
             }
             else{ //TTL expired, drop the packet.
-                // dbg(FLOODING_CHANNEL,"Stopping dead packet from %d\n",myWave.original_src);
+                dbg(FLOODING_CHANNEL,"Stopping dead packet from %d\n",myWave.original_src);
             }
         }
         else{ // Already propogated, drop the packet.
-            //dbg(FLOODING_CHANNEL,"Duplicate packet from %hhu\n",myWave.prev_src);
+            dbg(FLOODING_CHANNEL,"Duplicate packet from %hhu\n",myWave.prev_src);
         }
     }
 
