@@ -36,7 +36,6 @@ implementation{
         float potentialQuality;
         nqPair temp = {0,0};
         nqPair current = {TOS_NODE_ID, 1};
-        uint16_t node;
         call routingTable.clearValues(temp);                //because routing table stores old paths
         call unexplored.insert(current);
         call routingTable.insert(TOS_NODE_ID,current);
@@ -89,6 +88,10 @@ implementation{
         uint16_t i=0;
         uint16_t missing;
         
+        if(myLSP.id > topo_size){
+            dbg(ROUTING_CHANNEL, "ERROR: Source ID %d> topo_size %d\n",myLSP.id,topo_size);
+            return;
+        }
         //Initialize all of the LSP node's neighbors to 0.
         for(i=1;i<=maxNode;i++){
             topoTable[myLSP.id][i]=0;
@@ -97,25 +100,25 @@ implementation{
         //Check all NQ pairs in the lsp, updating quality if necessary.
         for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE; i+=2){
             if(myLSP.payload[i] == 0){ break; }
-            if(myLSP.payload[i] > topo_size || myLSP.id > topo_size){
-                dbg(ROUTING_CHANNEL, "ERROR: ID > topo_size(%d)\n",topo_size);
+            if(myLSP.payload[i] > topo_size){
+                dbg(ROUTING_CHANNEL, "ERROR: Node ID %d > topo_size %d\n",myLSP.payload[i],topo_size);
+                return;
             }
-            else{
-                topoTable[myLSP.id][myLSP.payload[i]] = (float)myLSP.payload[i+1]/255;
-                call existenceTable.insert(myLSP.id,TRUE);
-                if(!call existenceTable.contains(myLSP.payload[i])){
-                    call existenceTable.insert(myLSP.payload[i],FALSE);
-                }
+            topoTable[myLSP.id][myLSP.payload[i]] = (float)myLSP.payload[i+1]/255;
+            if(!call existenceTable.contains(myLSP.payload[i])){
+                call existenceTable.insert(myLSP.payload[i],FALSE);
             }
         }
+        call existenceTable.insert(myLSP.id,TRUE);
+        
         //If we have an LSP from all nodes we know exist, run Dijkstra!
         missing = gotAllExpectedLSPs();
         if(missing==0){
             post findPaths();
-            call DijkstraTimer.stop(); 
+            call DijkstraTimer.stop(); //also cancel timer so it doesn't rerun unnecessarily
         }
         else{
-            call DijkstraTimer.startOneShot(8000);
+            call DijkstraTimer.startOneShot(4000);  //only wait 4s for a missing LSP
             //dbg(ROUTING_CHANNEL,"Missing LSP from %d\n",missing);
         }
     }
@@ -127,12 +130,13 @@ implementation{
         uint8_t* data = call neighborDiscovery.assembleData();
 
         memcpy(&assembledData, data, data[0]);
-        assembledData[assembledData[0]]=0;                              //ensures byte after final quality is 0 to trigger stopping condition on reception
+        assembledData[assembledData[0]]=0;                              //ensures byte after final quality is 0 to trigger stopping condition in updateTopoTable
 
         lspSequence += 1;
         makeLSP(&myLSP, TOS_NODE_ID, lspSequence, &(assembledData[1]));//first byte tells length
-        call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
         post updateTopoTable();
+        call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
+        // dbg(ROUTING_CHANNEL, "Flooded my LSP\n");
     }
 
     /* == receiveLSP ==
@@ -148,6 +152,9 @@ implementation{
         if(myLSP.seq > topoTable[myLSP.id][0]){
             topoTable[myLSP.id][0] = myLSP.seq;
             post updateTopoTable();
+        }
+        else{
+            // dbg(ROUTING_CHANNEL, "Got %d's old LSP seq:%d\n",myLSP.id,myLSP.seq);
         }
     }
 
@@ -219,7 +226,7 @@ implementation{
     event void DijkstraTimer.fired(){
         dbg(ROUTING_CHANNEL, "Missing LSP from %d, but Running Dijkstra anyway\n", gotAllExpectedLSPs());
         // printExistenceTable();
-        call Wayfinder.printTopo();
+        // call Wayfinder.printTopo();
         post findPaths();
     }
     

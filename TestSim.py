@@ -153,21 +153,38 @@ def main():
     s.loadNoise("no_noise.txt")
 
     # s.addChannel(s.NEIGHBOR_CHANNEL)
-    s.addChannel(s.COMMAND_CHANNEL)    
+    # s.addChannel(s.COMMAND_CHANNEL)    
     s.addChannel(s.ROUTING_CHANNEL)                                                
     # s.addChannel(s.FLOODING_CHANNEL)
+    
     s.bootAll()
+    
     s.runTime(16)
     print("16s passed")
-    s.route(1,7,"Hello1!")
-    s.runTime(20)
+    
+    s.route(1,7,"Hello 7!")
+    s.runTime(4)
+    print("")
+    
+    s.route(7,1,"Hello 1!")
+    s.runTime(4)
+    print("")
+    
+    s.route(9,1,"Hi 1!")
+    s.runTime(4)
+    print("")
+    
     s.moteOff(5)
-    s.runTime(10)
-    s.route(1,7,"Hello2!")
-    s.runTime(10)
+    s.runTime(4)
+    
+    s.route(1,9,"Hello 9!")
+    s.runTime(4)
+    print("")
+    
     s.moteOff(8)
-    s.runTime(10)
-    s.route(1,7,"Hello3!")
-    s.runTime(10)
+    s.runTime(4)
+    
+    s.route(1,7,"Still there 7?")
+    s.runTime(4)
 if __name__ == '__main__':
     main()

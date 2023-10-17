@@ -22,7 +22,7 @@ implementation{
         if(myRoute.ttl>0){
             uint8_t nextHop = call router.getRoute(myRoute.dest);
             if(nextHop == 0){ // If the next hop is unknown, stop.
-                call router.printRoutingTable();
+                // call router.printRoutingTable();
                 dbg(ROUTING_CHANNEL, "Not sure how to get to %d. Dropping Packet.\n", myRoute.dest);
             }
             else{ // Otherwise, forward the pack using Simplesend.
