@@ -57,7 +57,7 @@ class TestSim:
         for line in f:
             s = line.split()
             if s:
-                print " ", s[0], " ", s[1], " ", s[2]
+                # print " ", s[0], " ", s[1], " ", s[2]
                 self.r.add(int(s[0]), int(s[1]), float(s[2]))
                 if not int(s[0]) in self.moteids:
                     self.moteids=self.moteids+[int(s[0])]
@@ -81,7 +81,7 @@ class TestSim:
                 self.t.getNode(i).addNoiseTraceReading(val)
 
         for i in self.moteids:
-            print "Creating noise model for ",i
+            # print "Creating noise model for ",i
             self.t.getNode(i).createNoiseModel()
 
     def bootNode(self, nodeID):
@@ -159,32 +159,34 @@ def main():
     
     s.bootAll()
     
-    s.runTime(16)
-    print("16s passed")
+    s.runTime(100)
     
-    s.route(1,7,"Hello 7!")
-    s.runTime(4)
-    print("")
+    print("\n================================================\n                ROUTING: 1 --> 7                \n================================================\n")
+    s.route(1,7,"1->7")
+    s.runTime(10)
     
-    s.route(7,1,"Hello 1!")
-    s.runTime(4)
-    print("")
+    # print("\n================================================\n                ROUTING: 7 --> 1                \n================================================\n")
+    # s.route(7,1,"7->1")
+    # s.runTime(10)
     
-    s.route(9,1,"Hi 1!")
-    s.runTime(4)
-    print("")
+    # print("\n================================================\n                ROUTING: 9 --> 1                \n================================================\n")
+    # s.route(9,1,"Hi 1!")
+    # s.runTime(10)
     
-    s.moteOff(5)
-    s.runTime(4)
+    # print("\n================================================\n                DISABLING NODE 5                \n================================================\n")
+    # s.moteOff(5)
+    # s.runTime(10)
     
-    s.route(1,9,"Hello 9!")
-    s.runTime(4)
-    print("")
+    # print("\n================================================\n                ROUTING: 1 --> 9                \n================================================\n")
+    # s.route(1,9,"Hello 9!")
+    # s.runTime(10)
     
-    s.moteOff(8)
-    s.runTime(4)
+    # print("\n================================================\n                DISABLING NODE 8                \n================================================\n")
+    # s.moteOff(8)
+    # s.runTime(10)
     
-    s.route(1,7,"Still there 7?")
-    s.runTime(4)
+    # print("\n================================================\n                ROUTING: 1 --> 7                \n================================================\n")
+    # s.route(1,7,"Still there 7?")
+    # s.runTime(4)
 if __name__ == '__main__':
     main()

@@ -213,13 +213,17 @@ implementation{
 
     // printRoutingTable() prints the next hops stored in the routing table, currently.
     command void Wayfinder.printRoutingTable(){
-        int i=1;
-        nqPair temp;
+        int i;
+        nqPair nextHop;
         dbg(ROUTING_CHANNEL,"Routing Table:\n");
+        dbg(ROUTING_CHANNEL, "______________________\n");
+        dbg(ROUTING_CHANNEL, "|Dest|NextHop|Quality|\n");
+        dbg(ROUTING_CHANNEL, "|----|-------|-------|\n");
         for(i=1;i<=maxNode;i++){
-            temp = call routingTable.get(i);
-            dbg(ROUTING_CHANNEL,"To get to %d send to %d | Expected Quality: %f\n", i, temp.neighbor, temp.quality);
+            nextHop = call routingTable.get(i);
+            dbg(ROUTING_CHANNEL,"|%4d|%7d|%.5f|\n", i, nextHop.neighbor, nextHop.quality);
         }
+        dbg(ROUTING_CHANNEL, "|____|_______|_______|\n\n");
     }
 
     // DijkstraTimer.fired() forces a dijkstra implementation even if the full topology may not be known to allow for partial routing.
