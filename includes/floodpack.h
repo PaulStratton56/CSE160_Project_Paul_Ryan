@@ -5,9 +5,9 @@
 #include "packet.h"
 
 enum{
-	FLOOD_PACKET_HEADER_LENGTH = 6,
-	FLOOD_PACKET_SIZE = PACKET_MAX_PAYLOAD_SIZE, //25
-	FLOOD_PACKET_MAX_PAYLOAD_SIZE = FLOOD_PACKET_SIZE - FLOOD_PACKET_HEADER_LENGTH // 19
+	fl_header_len = 6,
+	fl_pkt_len = pkt_max_pld_len,
+	fl_max_pld_len = fl_pkt_len - fl_header_len
 };
 
 /* == floodpack ==
@@ -20,18 +20,18 @@ enum{
 	protocol: Determines whether the packet is a request or a reply (to respond appropriately)
 	payload: Contains a message or higher level packets. */
 typedef nx_struct floodpack{
-	nx_uint8_t original_src;
-	nx_uint8_t prev_src;
+	nx_uint8_t og_src;
+	nx_uint8_t p_src;
 	nx_uint16_t seq;
     nx_uint8_t ttl;
-	nx_uint8_t protocol;
-	nx_uint8_t payload[FLOOD_PACKET_MAX_PAYLOAD_SIZE];
+	nx_uint8_t ptl;
+	nx_uint8_t pld[fl_max_pld_len];
 }floodpack;
 
 // logFloodPack(...): Prints the parameters of a given floodpack to a given channel.
 void logFloodpack(floodpack* input, char channel[]){
 	dbg(channel, "Og Src: %d | Prev Src: %d | Seq: %d | ttl: %d | Protocol: %d | Payload: %s\n",
-	input->original_src,input->prev_src,input->seq,input->ttl,input->protocol,(char*) input->payload);
+	input->og_src, input->p_src, input->seq, input->ttl, input->ptl, input->pld);
 }
 
 #endif

@@ -18,7 +18,7 @@ implementation{
     float topoTable[32][32]; // 0 row/col unused (no "node 0")
     lsp myLSP;
     uint16_t maxNode=0;
-    uint16_t lspSequence = 0;
+    uint16_t lsp_seq = 0;
     uint8_t assembledData[2*32+1];
     bool sendLSPs = FALSE;
 
@@ -26,7 +26,7 @@ implementation{
     uint16_t gotAllExpectedLSPs();
     void printRoutingTable();
     void printExistenceTable();
-    void makeLSP(lsp* LSP, uint16_t id, uint16_t seq, uint8_t* payload);
+    void makeLSP(lsp* LSP, uint16_t src, uint16_t seq, uint8_t* pld);
 
     /* == findPaths() ==
         Computes a routing table using Dijkstra on the stored topology table.
@@ -88,28 +88,28 @@ implementation{
         uint16_t i=0;
         uint16_t missing;
         
-        if(myLSP.id > topo_size){
-            dbg(ROUTING_CHANNEL, "ERROR: Source ID %d> topo_size %d\n",myLSP.id,topo_size);
+        if(myLSP.src > topo_size){
+            dbg(ROUTING_CHANNEL, "ERROR: Source ID %d> topo_size %d\n",myLSP.src,topo_size);
             return;
         }
         //Initialize all of the LSP node's neighbors to 0.
         for(i=1;i<=maxNode;i++){
-            topoTable[myLSP.id][i]=0;
+            topoTable[myLSP.src][i]=0;
         }
 
         //Check all NQ pairs in the lsp, updating quality if necessary.
-        for(i = 0; i < LSP_PACKET_MAX_PAYLOAD_SIZE; i+=2){
-            if(myLSP.payload[i] == 0){ break; }
-            if(myLSP.payload[i] > topo_size){
-                dbg(ROUTING_CHANNEL, "ERROR: Node ID %d > topo_size %d\n",myLSP.payload[i],topo_size);
+        for(i = 0; i < lsp_max_pld_len; i+=2){
+            if(myLSP.pld[i] == 0){ break; }
+            if(myLSP.pld[i] > topo_size){
+                dbg(ROUTING_CHANNEL, "ERROR: Node ID %d > topo_size %d\n",myLSP.pld[i],topo_size);
                 return;
             }
-            topoTable[myLSP.id][myLSP.payload[i]] = (float)myLSP.payload[i+1]/255;
-            if(!call existenceTable.contains(myLSP.payload[i])){
-                call existenceTable.insert(myLSP.payload[i],FALSE);
+            topoTable[myLSP.src][myLSP.pld[i]] = (float)myLSP.pld[i+1]/255;
+            if(!call existenceTable.contains(myLSP.pld[i])){
+                call existenceTable.insert(myLSP.pld[i],FALSE);
             }
         }
-        call existenceTable.insert(myLSP.id,TRUE);
+        call existenceTable.insert(myLSP.src,TRUE);
         
         //If we have an LSP from all nodes we know exist, run Dijkstra!
         missing = gotAllExpectedLSPs();
@@ -132,8 +132,9 @@ implementation{
         memcpy(&assembledData, data, data[0]);
         assembledData[assembledData[0]]=0;                              //ensures byte after final quality is 0 to trigger stopping condition in updateTopoTable
 
-        lspSequence += 1;
-        makeLSP(&myLSP, TOS_NODE_ID, lspSequence, &(assembledData[1]));//first byte tells length
+        lsp_seq += 1;
+
+        makeLSP(&myLSP, TOS_NODE_ID, lsp_seq, &(assembledData[1]));//first byte tells length
         post updateTopoTable();
         call flooding.initiate(255, PROTOCOL_LINKSTATE, (uint8_t*)&myLSP);
         // dbg(ROUTING_CHANNEL, "Flooded my LSP\n");
@@ -144,17 +145,17 @@ implementation{
         Save the incoming LSP, and update the stored topology using it. */
     task void receiveLSP(){
         //maintain maxNode of topology
-        if(myLSP.id>maxNode){
-            maxNode=myLSP.id;
+        if(myLSP.src>maxNode){
+            maxNode=myLSP.src;
         }
 
         //Checking sequence to see if valid
-        if(myLSP.seq > topoTable[myLSP.id][0]){
-            topoTable[myLSP.id][0] = myLSP.seq;
+        if(myLSP.seq > topoTable[myLSP.src][0]){
+            topoTable[myLSP.src][0] = myLSP.seq;
             post updateTopoTable();
         }
         else{
-            // dbg(ROUTING_CHANNEL, "Got %d's old LSP seq:%d\n",myLSP.id,myLSP.seq);
+            // dbg(ROUTING_CHANNEL, "Got %d's old LSP seq:%d\n",myLSP.src,myLSP.seq);
         }
     }
 
@@ -239,7 +240,7 @@ implementation{
         sendLSPs = TRUE;
         post sendLSP();
         //Restart this timer to very occasionally resend LSPs.
-        call lspTimer.startOneShot(256000);
+        call lspTimer.startOneShot(64000);
     }
 
     /* == neighborDiscovery.neighborUpdate() ==
@@ -254,9 +255,9 @@ implementation{
     /* == flooding.gotLSP(...) ==
         Signaled when the flooding module receives an LSP packet.
         Copy this LSP into memory and update the topology using this new LSP. */
-    event void flooding.gotLSP(uint8_t* payload){
-        memcpy(&myLSP,(lsp*)payload, sizeof(lsp));
-        // dbg(ROUTING_CHANNEL,"Got LSP from %d\n", myLSP.id);
+    event void flooding.gotLSP(uint8_t* incomingMsg){
+        memcpy(&myLSP, (lsp*)incomingMsg, lsp_len);
+        // dbg(ROUTING_CHANNEL,"Got LSP from %d\n", myLSP.src);
         post receiveLSP();
     }
 
@@ -292,12 +293,13 @@ implementation{
 
     /* == makeLSP(...) ==
         Adds LSP headers to a payload.
-        id: The id of the sending node.
+        src: The id of the sending node.
         The rest are self-explanatory. */
-    void makeLSP(lsp* LSP, uint16_t id, uint16_t seq, uint8_t* payload){
-        LSP->id = id;
+    void makeLSP(lsp* LSP, uint16_t src, uint16_t seq, uint8_t* pld){
+        LSP->src = src;
         LSP->seq = seq;
-        memcpy(LSP->payload, payload, LSP_PACKET_MAX_PAYLOAD_SIZE);
+
+        memcpy(LSP->pld, pld, lsp_max_pld_len);
     }
 
 }

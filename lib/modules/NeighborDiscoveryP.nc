@@ -6,25 +6,23 @@
 module neighborDiscoveryP{
     provides interface neighborDiscovery;
     
-    uses interface SimpleSend as pingSend;
     uses interface Timer<TMilli> as pingTimer;
     uses interface Hashmap<linkquality> as neighborhood;
     uses interface PacketHandler;
 }
 
 implementation{
-    ndpack myPing; //Inner pack 
-    pack myPack; //Outer SimpleSend pack
+    ndpack nd_pkt; //Inner pack 
     float decayRate=.7; //Alpha value of the exponentially weighted moving average reliability value for neighbors.
                          //Higher values place more emphasis on recent data.
     uint8_t allowedQuality=10; //Quality threshold to consider a connection as valid.
                              //A quality below this value represents a 'too noisy' connection.
     uint8_t maxQuality = 255;
-    uint16_t mySeq = 0; //Sequence of the broadcasted pings
+    uint16_t nd_seq = 0; //Sequence of the broadcasted pings
     uint8_t assembledData[2*32+1];//2*hashmap max size
 
     //Function declarations
-    error_t makeNDpack(ndpack* packet, uint8_t src, uint16_t seq, uint8_t protocol, uint8_t* payload);
+    void makendpack(ndpack* pkt, uint8_t src, uint16_t seq, uint8_t ptl);
     
     /*== ping() ==
         Posted when the pingTimer fires.
@@ -33,17 +31,15 @@ implementation{
         Restarts the pingTimer.
         Broadcasts the ping. */
     task void ping(){
-        char sendPayload[] = "12345678901234567890123";//to check length of payload
 
         //Increase the sequence number.
-        mySeq += 1;
+        nd_seq += 1;
 
         //Create the outbound packet.
-        makeNDpack(&myPing, TOS_NODE_ID, mySeq, PROTOCOL_PING, (uint8_t*) sendPayload);
-        call pingSend.makePack(&myPack,TOS_NODE_ID,AM_BROADCAST_ADDR,PROTOCOL_NEIGHBOR,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
+        makendpack(&nd_pkt, TOS_NODE_ID, nd_seq, PROTOCOL_PING);
 
-        //Send the packet using SimpleSend.
-        call pingSend.send(myPack,AM_BROADCAST_ADDR);
+        //Send it.
+        call PacketHandler.send(TOS_NODE_ID, (uint8_t)AM_BROADCAST_ADDR, PROTOCOL_NEIGHBOR, (uint8_t*)&nd_pkt);
 
         //Restart the timer.
         call pingTimer.startOneShot(4000);
@@ -93,17 +89,16 @@ implementation{
         Task to handle a neighbor ping from another node.
         Sends a pack back with the sequence number of the incoming pack. */
     task void respondtoPingRequest(){
-        uint8_t dest = myPing.src;
-        uint16_t seq = myPing.seq;
-        char replyPayload[] = "I'm here!";
+        uint8_t dst = nd_pkt.src;
+        uint16_t seq = nd_pkt.seq;
 
         //To respond, create the pack to reply with.
-        makeNDpack(&myPing, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY, (uint8_t*) replyPayload);
-        call pingSend.makePack(&myPack,TOS_NODE_ID,dest,PROTOCOL_NEIGHBOR,(uint8_t*) &myPing,PACKET_MAX_PAYLOAD_SIZE);
+        makendpack(&nd_pkt, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY);
 
-        //Then, send it.
-        call pingSend.send(myPack,myPack.dest);
-        dbg(NEIGHBOR_CHANNEL,"Replied to neighbor ID %hhu\n",dest);
+        // Then, send it.
+        call PacketHandler.send(TOS_NODE_ID, dst, PROTOCOL_NEIGHBOR, (uint8_t*)&nd_pkt);
+
+        dbg(NEIGHBOR_CHANNEL,"Replied to neighbor ID %hhu\n", dst);
     }
 
     /*== respondtoPingReply() ==
@@ -112,15 +107,14 @@ implementation{
     task void respondtoPingReply(){
         linkquality status;
 
-        
-        if(call neighborhood.contains(myPing.src)){ //If the link is known, increase the quality of that link (because a reply was found)
-            status = call neighborhood.get(myPing.src);
+        if(call neighborhood.contains(nd_pkt.src)){ //If the link is known, increase the quality of that link (because a reply was found)
+            status = call neighborhood.get(nd_pkt.src);
             status.quality = (uint8_t)(maxQuality*decayRate) + (uint8_t)((1-decayRate)*status.quality);
-            dbg(NEIGHBOR_CHANNEL,"Reply from %d, Updated quality to %d\n",myPing.src,status.quality);
+            dbg(NEIGHBOR_CHANNEL,"Reply from %d, Updated quality to %d\n",nd_pkt.src,status.quality);
         }
         else{ //Otherwise, create and signal the creation of a perfect new link.
             status.quality=decayRate*maxQuality;
-            dbg(NEIGHBOR_CHANNEL,"Added Neighbor ID %hhu\n",myPing.src);
+            dbg(NEIGHBOR_CHANNEL,"Added Neighbor ID %hhu\n",nd_pkt.src);
 
             signal neighborDiscovery.neighborUpdate();
         }
@@ -129,7 +123,7 @@ implementation{
         status.recent=TRUE;
 
         //Insert the updated link data into a table.
-        call neighborhood.insert(myPing.src,status);
+        call neighborhood.insert(nd_pkt.src,status);
     }
 
     /*== onBoot() ==
@@ -203,14 +197,14 @@ implementation{
         Signaled from the PacketHandler module when receiving an incoming NeighborDiscovery packet.
         Checks the protocol of the ndpack previously stored in the SimpleSend pack, and responds appropriately.
         Also copies the pack into NeighborDiscovery memory to prevent data loss. */
-    event void PacketHandler.gotPing(uint8_t* payload){
-        memcpy(&myPing, payload,ND_PACKET_SIZE);
+    event void PacketHandler.gotPing(uint8_t* incomingMsg){
+        memcpy(&nd_pkt, incomingMsg, nd_pkt_len);
 
-        //Using the inner packet protocol of the inbound packet, determine whether it is a ping or a reply, and respond appropriately.
-        if(myPing.protocol == PROTOCOL_PING){
+        //Use ptl to know what to do.
+        if(nd_pkt.ptl == PROTOCOL_PING){
             post respondtoPingRequest();
         }
-        else if(myPing.protocol == PROTOCOL_PINGREPLY){
+        else if(nd_pkt.ptl == PROTOCOL_PINGREPLY){
             post respondtoPingReply();
         }
         else{
@@ -226,13 +220,10 @@ implementation{
         seq: The sequence number of the packet (used for statistics, etc.)
         protocol: Determines whether the packet is a request or a reply (to respond appropriately)
         payload: Contains a message or higher level packets. */
-    error_t makeNDpack(ndpack* packet, uint8_t src, uint16_t seq, uint8_t protocol, uint8_t* payload){
-        packet->src = src;
-        packet->seq = seq;
-        packet->protocol = protocol;
-        
-        memcpy(packet->payload, payload, ND_PACKET_MAX_PAYLOAD_SIZE);
-        return SUCCESS;
+    void makendpack(ndpack* pkt, uint8_t src, uint16_t seq, uint8_t ptl){
+        pkt->src = src;
+        pkt->seq = seq;
+        pkt->ptl = ptl;
     }
 
     //Used for flooding, disregard.

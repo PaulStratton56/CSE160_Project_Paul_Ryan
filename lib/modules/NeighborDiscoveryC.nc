@@ -8,9 +8,6 @@ implementation{
    components neighborDiscoveryP;
    neighborDiscovery = neighborDiscoveryP.neighborDiscovery;
    
-   components new SimpleSendC(AM_PACK) as pingSend;
-   neighborDiscoveryP.pingSend -> pingSend;
-   
    components new TimerMilliC() as pingTimer;
    neighborDiscoveryP.pingTimer -> pingTimer;
 

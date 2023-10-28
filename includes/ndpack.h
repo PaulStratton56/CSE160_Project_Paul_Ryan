@@ -4,9 +4,7 @@
 #include "packet.h"
 
 enum{
-	ND_PACKET_HEADER_LENGTH = 4,
-	ND_PACKET_SIZE = PACKET_MAX_PAYLOAD_SIZE, //25
-	ND_PACKET_MAX_PAYLOAD_SIZE = ND_PACKET_SIZE - ND_PACKET_HEADER_LENGTH,//21
+	nd_pkt_len = 4
 };
 
 /* == ndpack ==
@@ -19,14 +17,13 @@ enum{
 typedef nx_struct ndpack{
 	nx_uint8_t src;
 	nx_uint16_t seq;
-	nx_uint8_t protocol;
-	nx_uint8_t payload[ND_PACKET_MAX_PAYLOAD_SIZE];
+	nx_uint8_t ptl;
 }ndpack;
 
 // logNDPack(...): Prints the parameters of a given ndpack to a given channel.
 void logNDpack(ndpack* input, char channel[]){
-	dbg(channel, "Src: %d | Seq: %d | Protocol: %d | Payload: %s\n",
-	input->src,input->seq,input->protocol,(char*) input->payload);
+	dbg(channel, "Src: %d | Seq: %d | Protocol: %d",
+	input->src, input->seq, input->ptl);
 }
 
 #endif

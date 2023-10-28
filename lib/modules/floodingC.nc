@@ -8,9 +8,6 @@ implementation{
    components floodingP;
    flooding = floodingP.flooding;
 
-   components new SimpleSendC(AM_PACK) as waveSend;
-   floodingP.waveSend -> waveSend;
-
     //stores src, seq to avoid resending old packets
    components new HashmapC(uint16_t,16) as packets;
    floodingP.packets -> packets;
