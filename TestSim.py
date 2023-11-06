@@ -14,6 +14,7 @@ class TestSim:
     CMD_NEIGHBOR_DUMP = 1
     CMD_ROUTE_DUMP=3
     CMD_ROUTE = 10
+    CMD_CONNECT = 11
     CMD_FLOOD = 31
     
     # CHANNELS - see includes/channels.h
@@ -125,6 +126,9 @@ class TestSim:
     
     def route(self, source, dest, msg):
         self.sendCMD(self.CMD_ROUTE, source, "{0}{1}".format(chr(dest),msg))
+    
+    def connect(self, source, dest):
+        self.sendCMD(self.CMD_CONNECT, source, "{0}{1}".format(chr(dest),""))
 
     def flood(self,source,msg):
         self.sendCMD(self.CMD_FLOOD,source,"{0}{1}".format(chr(source),msg))
@@ -153,17 +157,24 @@ def main():
     s.loadNoise("no_noise.txt")
 
     # s.addChannel(s.NEIGHBOR_CHANNEL)
-    # s.addChannel(s.COMMAND_CHANNEL)    
-    s.addChannel(s.ROUTING_CHANNEL)                                                
+    s.addChannel(s.COMMAND_CHANNEL)
+    s.addChannel(s.GENERAL_CHANNEL)
+    s.addChannel(s.TRANSPORT_CHANNEL)
+    # s.addChannel(s.ROUTING_CHANNEL)                                            
     # s.addChannel(s.FLOODING_CHANNEL)
     
     s.bootAll()
     
     s.runTime(100)
     
-    print("\n================================================\n                ROUTING: 1 --> 7                \n================================================\n")
-    s.route(1,7,"1->7")
-    s.runTime(10)
+    s.connect(1,2)
+
+    s.runTime(100)
+
+
+    # print("\n================================================\n                ROUTING: 1 --> 7                \n================================================\n")
+    # s.route(1,7,"1->7")
+    # s.runTime(10)
     
     # print("\n================================================\n                ROUTING: 7 --> 1                \n================================================\n")
     # s.route(7,1,"7->1")

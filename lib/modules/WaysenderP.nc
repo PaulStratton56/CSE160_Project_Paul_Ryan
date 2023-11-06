@@ -37,7 +37,13 @@ implementation{
         Checks if node is the destination to pass to higher modules, otherwise forwards the routing packet. */
     task void gotRoutedPacket(){
         if(ws_pkt.dst == TOS_NODE_ID){
+            uint8_t* pld = (uint8_t*)ws_pkt.pld;
             switch(ws_pkt.ptl){
+                case(PROTOCOL_TCP):
+                    dbg(TRANSPORT_CHANNEL, "I got a transport pack!\n");
+                    signal Waysender.gotTCP(pld);
+                    break;
+
                 default:
                     dbg(ROUTING_CHANNEL, "I am the routing destination!\n");
                     break;
