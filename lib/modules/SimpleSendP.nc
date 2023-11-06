@@ -56,6 +56,8 @@ implementation{
          sendInfo *input;
 
          input = call Pool.get();
+         // if(TOS_NODE_ID==3)dbg(ROUTING_CHANNEL,"Removed from pool for protocol %d. Size now: %d\n",msg.ptl,call Pool.size());
+         if(call Pool.size()<3)dbg(GENERAL_CHANNEL,"===============================Pool Running Low! %d/%d===============================\n",call Pool.size(),call Pool.maxSize());
          input->packet = msg;
          input->dest = dest;
 
@@ -68,6 +70,7 @@ implementation{
 
          return SUCCESS;
       }
+      dbg(GENERAL_CHANNEL, "Sending for protocol %d failed. Pool empty\n",msg.ptl);
       return FAIL;
    }
 
@@ -87,6 +90,8 @@ implementation{
             //Release resources used if the attempt was successful
             call Queue.dequeue();
             call Pool.put(info);
+            // if(TOS_NODE_ID==3 && call Pool.size()==call Pool.maxSize())dbg(GENERAL_CHANNEL,"===============================Pool Full Again!===============================\n");
+            // if(TOS_NODE_ID==3)dbg(ROUTING_CHANNEL,"Added to pool for protocol: %d. Size now: %d\n",(info->packet).ptl, call Pool.size());
          }
 
 

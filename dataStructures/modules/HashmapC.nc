@@ -24,7 +24,7 @@ implementation{
 
    hashmapEntry map[n];
    uint32_t keys[n];
-   uint16_t numofVals;
+   uint16_t numofVals=0;
 
    // Hashing Functions
    uint32_t hash2(uint32_t k){
@@ -36,7 +36,7 @@ implementation{
    }
 
    uint32_t hash(uint32_t k, uint32_t i){
-      return (hash2(k)+ i*hash3(k))%HASH_MAX_SIZE;
+      return (hash2(k)+ i*hash3(k))%(HASH_MAX_SIZE-1)+1;
    }
 
    command void Hashmap.insert(uint32_t k, t input){
@@ -112,7 +112,7 @@ implementation{
       do{
          j=hash(k, i);
          if(map[j].key == k){
-            map[j].key=0;
+            map[j].key=EMPTY_KEY;
             removed = 1;
             break;
          }
@@ -134,6 +134,7 @@ implementation{
          i++;
       }while(i<HASH_MAX_SIZE);
 
+      dbg(HASHMAP_CHANNEL,"Key %d not Present!\n",k);
       // We have to return something so we return the first key
       return map[0].value;
    }
@@ -175,11 +176,12 @@ implementation{
       return HASH_MAX_SIZE;
    }
 
-   command void Hashmap.clearValues(t temp){
+   command void Hashmap.clearValues(){
       int i=0;
-      for(i=0;i<numofVals;i++){
-         call Hashmap.insert(keys[i],temp);
+      for(i=0;i<HASH_MAX_SIZE;i++){
+         map[i].key = EMPTY_KEY;
       }
+      numofVals=0;
    }
    
 }

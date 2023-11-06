@@ -13,7 +13,8 @@ module neighborDiscoveryP{
 
 implementation{
     ndpack nd_pkt; //Inner pack 
-    float decayRate=.7; //Alpha value of the exponentially weighted moving average reliability value for neighbors.
+    ndpack r_nd_pkt;
+    float decayRate=.4; //Alpha value of the exponentially weighted moving average reliability value for neighbors.
                          //Higher values place more emphasis on recent data.
     uint8_t allowedQuality=10; //Quality threshold to consider a connection as valid.
                              //A quality below this value represents a 'too noisy' connection.
@@ -39,10 +40,11 @@ implementation{
         makendpack(&nd_pkt, TOS_NODE_ID, nd_seq, PROTOCOL_PING);
 
         //Send it.
+        // dbg(NEIGHBOR_CHANNEL,"PING!\n");
         call PacketHandler.send(TOS_NODE_ID, (uint8_t)AM_BROADCAST_ADDR, PROTOCOL_NEIGHBOR, (uint8_t*)&nd_pkt);
 
         //Restart the timer.
-        call pingTimer.startOneShot(4000);
+        call pingTimer.startOneShot(7000);
     }
 
     /*== updateLinks() ==
@@ -53,34 +55,35 @@ implementation{
     task void updateLinks(){
         uint16_t i=0;
         linkquality status;
+        uint32_t node;
         uint16_t numNeighbors = call neighborhood.size();
-        uint32_t* myNeighbors = call neighborhood.getKeys();
 
         //Loop through each neighbor and update link quality value.
         while(i<numNeighbors){
-            if(call neighborhood.contains(myNeighbors[i]) && (call neighborhood.get(myNeighbors[i])).quality>0){
-                status=call neighborhood.get(myNeighbors[i]);
+            node = call neighborhood.getIndex(i);
+            if(call neighborhood.contains(node)){
+                status=call neighborhood.get(node);
 
                 //If the expected reply packet from a node did not show up, decrease the quality of the link.
                 if(!status.recent){
                     status.quality = (uint8_t)((1-decayRate)*status.quality);
-                    dbg(NEIGHBOR_CHANNEL,"No reply from %d, Updated quality to %d\n",myNeighbors[i],status.quality);
+                    // dbg(NEIGHBOR_CHANNEL,"No reply from %d, Updated quality to %d\n",node,status.quality);
                 }
 
                 //If the quality of a link is below a certain threshold, remove it from the considered list of neighbors.
                 if(status.quality<allowedQuality){
-                    dbg(NEIGHBOR_CHANNEL,"Removed %d (Quality %d > Threshold %d).\n",myNeighbors[i],status.quality,allowedQuality);
-                    status.quality = 0;
-                    call neighborhood.insert(myNeighbors[i],status);
+                    call neighborhood.remove(node);
+                    dbg(NEIGHBOR_CHANNEL,"Removed %d (Quality %d < Threshold %d).\n",node,status.quality,allowedQuality);
                     signal neighborDiscovery.neighborUpdate();
                     numNeighbors -= 1;
                     i--;
                 }
                 else{
                     status.recent=FALSE;
-                    call neighborhood.insert(myNeighbors[i],status);
+                    call neighborhood.insert(node,status);
                 }
             }
+            else{dbg(NEIGHBOR_CHANNEL,"WEIRD PROBLEM\n");}
             i++;
         }
     }
@@ -89,16 +92,17 @@ implementation{
         Task to handle a neighbor ping from another node.
         Sends a pack back with the sequence number of the incoming pack. */
     task void respondtoPingRequest(){
-        uint8_t dst = nd_pkt.src;
-        uint16_t seq = nd_pkt.seq;
+        uint8_t dst = r_nd_pkt.src;
+        uint16_t seq = r_nd_pkt.seq;
 
         //To respond, create the pack to reply with.
         makendpack(&nd_pkt, TOS_NODE_ID, seq, PROTOCOL_PINGREPLY);
 
         // Then, send it.
+        // dbg(NEIGHBOR_CHANNEL,"Responding!\n");
         call PacketHandler.send(TOS_NODE_ID, dst, PROTOCOL_NEIGHBOR, (uint8_t*)&nd_pkt);
 
-        dbg(NEIGHBOR_CHANNEL,"Replied to neighbor ID %hhu\n", dst);
+        // dbg(NEIGHBOR_CHANNEL,"Replied to neighbor ID %hhu\n", dst);
     }
 
     /*== respondtoPingReply() ==
@@ -107,14 +111,14 @@ implementation{
     task void respondtoPingReply(){
         linkquality status;
 
-        if(call neighborhood.contains(nd_pkt.src)){ //If the link is known, increase the quality of that link (because a reply was found)
-            status = call neighborhood.get(nd_pkt.src);
+        if(call neighborhood.contains(r_nd_pkt.src)){ //If the link is known, increase the quality of that link (because a reply was found)
+            status = call neighborhood.get(r_nd_pkt.src);
             status.quality = (uint8_t)(maxQuality*decayRate) + (uint8_t)((1-decayRate)*status.quality);
-            dbg(NEIGHBOR_CHANNEL,"Reply from %d, Updated quality to %d\n",nd_pkt.src,status.quality);
+            // dbg(NEIGHBOR_CHANNEL,"Reply from %d, Updated quality to %d\n",r_nd_pkt.src,status.quality);
         }
         else{ //Otherwise, create and signal the creation of a perfect new link.
-            status.quality=decayRate*maxQuality;
-            dbg(NEIGHBOR_CHANNEL,"Added Neighbor ID %hhu\n",nd_pkt.src);
+            status.quality=maxQuality;
+            // dbg(NEIGHBOR_CHANNEL,"Added Neighbor ID %hhu\n",r_nd_pkt.src);
 
             signal neighborDiscovery.neighborUpdate();
         }
@@ -123,7 +127,7 @@ implementation{
         status.recent=TRUE;
 
         //Insert the updated link data into a table.
-        call neighborhood.insert(nd_pkt.src,status);
+        call neighborhood.insert(r_nd_pkt.src,status);
     }
 
     /*== onBoot() ==
@@ -131,7 +135,7 @@ implementation{
         Called from Node.nc's "startDone" function.
         Posts a ping task to start the timer and introduce a node to its neighbors. */
     command void neighborDiscovery.onBoot(){
-        post ping();
+        call pingTimer.startOneShot(TOS_NODE_ID%4 * 250);
     }
     
     //getNeighbors() returns a list of node IDs that are considered neighbors.
@@ -198,17 +202,17 @@ implementation{
         Checks the protocol of the ndpack previously stored in the SimpleSend pack, and responds appropriately.
         Also copies the pack into NeighborDiscovery memory to prevent data loss. */
     event void PacketHandler.gotPing(uint8_t* incomingMsg){
-        memcpy(&nd_pkt, incomingMsg, nd_pkt_len);
+        memcpy(&r_nd_pkt, incomingMsg, nd_pkt_len);
 
         //Use ptl to know what to do.
-        if(nd_pkt.ptl == PROTOCOL_PING){
+        if(r_nd_pkt.ptl == PROTOCOL_PING){
             post respondtoPingRequest();
         }
-        else if(nd_pkt.ptl == PROTOCOL_PINGREPLY){
+        else if(r_nd_pkt.ptl == PROTOCOL_PINGREPLY){
             post respondtoPingReply();
         }
         else{
-            dbg(GENERAL_CHANNEL,"Packet Handler Error: Incorrectly received PROTOCOL_NEIGHBOR packet payload\n");
+            dbg(NEIGHBOR_CHANNEL,"Packet Handler Error: Incorrectly received PROTOCOL_NEIGHBOR packet payload\n");
         }
     }
 

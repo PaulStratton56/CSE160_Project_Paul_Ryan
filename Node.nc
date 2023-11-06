@@ -37,12 +37,12 @@ implementation{
 
    event void Boot.booted(){
       call AMControl.start();
-      dbg(GENERAL_CHANNEL, "Booted\n");
+      // dbg(GENERAL_CHANNEL, "Booted\n");
    }
 
    event void AMControl.startDone(error_t err){
       if(err == SUCCESS){
-         dbg(GENERAL_CHANNEL, "Radio On\n");
+         // dbg(GENERAL_CHANNEL, "Radio On\n");
 
          //When done booting, start the ND Ping timer.
          call nd.onBoot();
@@ -58,6 +58,7 @@ implementation{
 
    event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
       dbg(HANDLER_CHANNEL, "Packet Received\n");
+      // if(((pack*)payload)->ptl==PROTOCOL_ROUTING)dbg(ROUTING_CHANNEL, "Got Routing Packet from: %d\n",((pack*)payload)->src);
       if(len==sizeof(pack)){         
          
          //Pass the packet off to a separate packet handler module.

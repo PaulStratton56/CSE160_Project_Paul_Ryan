@@ -48,7 +48,7 @@ class TestSim:
 
     # Load a topo file and use it.
     def loadTopo(self, topoFile):
-        print 'Creating Topo!'
+        print 'Creating Topo: ' + topoFile
         # Read topology file.
         topoFile = 'topo/'+topoFile
         f = open(topoFile, "r")
@@ -148,26 +148,32 @@ def main():
 
     # s.loadTopo("long_line.topo")
     # s.loadTopo("smalltopo.topo")
-    s.loadTopo("example.topo")
+    # s.loadTopo("example.topo")
+    # s.loadTopo("circle.topo")
+    s.loadTopo("tuna-melt.topo")
+    # s.loadTopo("pizza.topo")
 
     s.loadNoise("no_noise.txt")
 
-    # s.addChannel(s.NEIGHBOR_CHANNEL)
-    # s.addChannel(s.COMMAND_CHANNEL)    
-    s.addChannel(s.ROUTING_CHANNEL)                                                
-    # s.addChannel(s.FLOODING_CHANNEL)
+    s.runTime(32)
     
+    # s.addChannel(s.COMMAND_CHANNEL)    
+    # s.addChannel(s.FLOODING_CHANNEL)
+    s.addChannel(s.ROUTING_CHANNEL)                                                
+    s.addChannel(s.NEIGHBOR_CHANNEL)
+    s.addChannel(s.GENERAL_CHANNEL)
+
     s.bootAll()
     
-    s.runTime(100)
+    s.runTime(128)
+    x=23
+    print "\n================================================\n                ROUTING: 1 -->",x,"               \n================================================\n" 
+    s.route(1,x,"1->x")
+    s.runTime(4)
     
-    print("\n================================================\n                ROUTING: 1 --> 7                \n================================================\n")
-    s.route(1,7,"1->7")
-    s.runTime(10)
-    
-    # print("\n================================================\n                ROUTING: 7 --> 1                \n================================================\n")
-    # s.route(7,1,"7->1")
-    # s.runTime(10)
+    # print "\n================================================\n                ROUTING:",x,"--> 1                \n================================================\n"
+    # s.route(x,1,"x->1")
+    # s.runTime(64)
     
     # print("\n================================================\n                ROUTING: 9 --> 1                \n================================================\n")
     # s.route(9,1,"Hi 1!")

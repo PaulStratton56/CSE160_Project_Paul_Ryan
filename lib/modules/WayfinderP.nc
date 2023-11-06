@@ -19,7 +19,7 @@ implementation{
     lsp myLSP;
     uint16_t maxNode=0;
     uint16_t lsp_seq = 0;
-    uint8_t assembledData[2*32+1];
+    uint8_t assembledData[2*32+1];//first byte specifies length
     bool sendLSPs = FALSE;
 
     //Function declarations
@@ -36,11 +36,11 @@ implementation{
         float potentialQuality;
         nqPair temp = {0,0};
         nqPair current = {TOS_NODE_ID, 1};
-        call routingTable.clearValues(temp);                //because routing table stores old paths
-        call unexplored.insert(current);
+        
+        // dbg(ROUTING_CHANNEL, "==================================================RUNNING DIJKSTRA==================================================\n");
+        call routingTable.clearValues();                //because routing table stores old paths
         call routingTable.insert(TOS_NODE_ID,current);
-
-        // dbg(ROUTING_CHANNEL, "Running Dijkstra\n");
+        
         // Update the routing table with neighbor qualities.
         for(i=1;i<=maxNode;i++){
             if(i!=TOS_NODE_ID && topoTable[TOS_NODE_ID][i]>0){
@@ -56,10 +56,10 @@ implementation{
             assignNQP(&current,call unexplored.extract());
             if(current.quality == (call routingTable.get(current.neighbor)).quality){       //if extracted value is still valid best way to reach
                 for(i=1;i<=maxNode;i++){
-                    if(i!=current.neighbor){                                                //run through all neighbors
+                    if(i!=current.neighbor && topoTable[current.neighbor][i]>0){                                                //run through all neighbors
                         potentialQuality = current.quality*topoTable[current.neighbor][i];
 
-                        if(potentialQuality > (call routingTable.get(i)).quality){          //if found a better way
+                        if(!call routingTable.contains(i) || potentialQuality > (call routingTable.get(i)).quality){          //if found a better way
                             call unexplored.insertPair(i,potentialQuality);                 //add it to the heap to explore from later
 
                             temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;
@@ -70,6 +70,7 @@ implementation{
                 }
             }
         }
+        // call Wayfinder.printTopo();
         // call Wayfinder.printRoutingTable();
 
         // for(i=0;i<call existenceTable.size();i++){
@@ -114,12 +115,11 @@ implementation{
         //If we have an LSP from all nodes we know exist, run Dijkstra!
         missing = gotAllExpectedLSPs();
         if(missing==0){
-            post findPaths();
             call DijkstraTimer.stop(); //also cancel timer so it doesn't rerun unnecessarily
+            post findPaths();
         }
         else{
-            call DijkstraTimer.startOneShot(4000);  //only wait 4s for a missing LSP
-            //dbg(ROUTING_CHANNEL,"Missing LSP from %d\n",missing);
+            call DijkstraTimer.startOneShot(8000);  //only wait a few seconds for a missing LSP
         }
     }
 
@@ -170,7 +170,7 @@ implementation{
         maxNode = TOS_NODE_ID;
 
         //Start a timer to stall before we consider sending LSPs.
-        call lspTimer.startOneShot(8000);
+        call lspTimer.startOneShot(17000+250*(TOS_NODE_ID%4));
     }
 
     // getRoute(...) returns the next hop for routing.
@@ -193,9 +193,20 @@ implementation{
         for(i = 0 ; i < lastNode; i++){
             for(j = 0; j < (lastNode*spacing); j+=spacing){
                 if(j == 0 || i == 0){ row[j] = '0'+(i+(j/spacing)); }
-                else if(topoTable[i][j/spacing] >= .75){ row[j] = '3'; }
-                else if(topoTable[i][j/spacing] >= .5){ row[j] = '2'; }
-                else if(topoTable[i][j/spacing] >= .25){ row[j] = '1'; }
+                else if(topoTable[i][j/spacing] >= .98){ row[j] = 'A'; }
+                else if(topoTable[i][j/spacing] >= .96){ row[j] = 'B'; }
+                else if(topoTable[i][j/spacing] >= .94){ row[j] = 'C'; }
+                else if(topoTable[i][j/spacing] >= .92){ row[j] = 'D'; }
+                else if(topoTable[i][j/spacing] >= .9){ row[j] = '9'; }
+                else if(topoTable[i][j/spacing] >= .8){ row[j] = '8'; }
+                else if(topoTable[i][j/spacing] >= .7){ row[j] = '7'; }
+                else if(topoTable[i][j/spacing] >= .6){ row[j] = '6'; }
+                else if(topoTable[i][j/spacing] >= .5){ row[j] = '5'; }
+                else if(topoTable[i][j/spacing] >= .4){ row[j] = '4'; }
+                else if(topoTable[i][j/spacing] >= .3){ row[j] = '3'; }
+                else if(topoTable[i][j/spacing] >= .2){ row[j] = '2'; }
+                else if(topoTable[i][j/spacing] >= .1){ row[j] = '1'; }
+                else if(topoTable[i][j/spacing] > 0){ row[j] = '0'; }
                 else { row[j] = '_'; }
                 for(k = 1; k < spacing-1; k++){
                     row[j+k] = ' ';
@@ -240,7 +251,7 @@ implementation{
         sendLSPs = TRUE;
         post sendLSP();
         //Restart this timer to very occasionally resend LSPs.
-        call lspTimer.startOneShot(64000);
+        call lspTimer.startOneShot(61000);
     }
 
     /* == neighborDiscovery.neighborUpdate() ==
@@ -248,6 +259,7 @@ implementation{
         If allowed, send an LSP to update the network of this topology change. */
     event void neighborDiscovery.neighborUpdate(){
         if(sendLSPs){
+            dbg(ROUTING_CHANNEL,"Neighbor update, sending LSPs\n");
             post sendLSP();
         }
     }

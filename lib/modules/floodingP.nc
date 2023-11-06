@@ -1,4 +1,3 @@
-#include "../../includes/packet.h"
 #include "../../includes/floodpack.h"
 #include "../../includes/protocol.h"
 
@@ -14,37 +13,9 @@ implementation{
     //Define a static flood pack for later use
     uint16_t floodSequence=0;
     floodpack fl_pkt;
-    pack myPack;
 
     //Function declarations
     void makefloodpack(floodpack* pkt, uint16_t og_src, uint16_t p_src, uint16_t seq, uint8_t ttl, uint8_t ptl, uint8_t* pld);
-
-    /* == broadsend() ==
-        After an incoming packet is received and stored in fl_pkt, 
-        broadcasts a packet to all neighbors EXCEPT the source of the incoming packet. */
-    task void broadsend(){
-        int i = 0;
-        //Get and store neighbors & the number of neighbors
-        uint32_t neighbor;
-        uint16_t numNeighbors = call neighborhood.numNeighbors();
-        //Update the previous source with current node ID (since a packet will soon be sent out by this node)
-        uint16_t prevNode = fl_pkt.p_src;
-
-        fl_pkt.p_src = TOS_NODE_ID;
-        fl_pkt.ttl -= 1;
-        
-        if(!call neighborhood.excessNeighbors()){ //If we know all our neighbors...
-            for(i=0;i<numNeighbors;i++){
-                neighbor = call neighborhood.getNeighbor(i);
-                if(neighbor!=(uint32_t)prevNode && neighbor!=fl_pkt.og_src){ //If the currently considered neighbor is not the previous or original source, propogate the wave to that node.
-                    call PacketHandler.send(TOS_NODE_ID, neighbor, PROTOCOL_FLOOD, (uint8_t*) &fl_pkt);
-                }
-            }
-        }
-        else{ //If the table is full, there may be unknown neighbors! So broadcast as a safety measure (Less optimal, but still works).
-            call PacketHandler.send(TOS_NODE_ID, (uint8_t)AM_BROADCAST_ADDR, PROTOCOL_FLOOD, (uint8_t*) &fl_pkt);
-        }
-    }
 
     /* == flood() ==
         Task to handle floodPacks.
@@ -53,16 +24,19 @@ implementation{
     task void flood(){
         //If we havent seen a flood from the source before, or the sequence number from the node is newer, send the message.
         if(!call packets.contains(fl_pkt.og_src) || call packets.get(fl_pkt.og_src)<fl_pkt.seq){
-            if(fl_pkt.ttl>0){ //Broadsend if valid ttl
+            if(fl_pkt.ttl>0){ //Broadcast if valid ttl
                 call packets.insert(fl_pkt.og_src,fl_pkt.seq); //Update sequence.
-                post broadsend();
+                fl_pkt.p_src = TOS_NODE_ID;
+                fl_pkt.ttl -= 1;
+                // dbg(FLOODING_CHANNEL,"Broadcasting wave originally sent by %d\n",fl_pkt.og_src);
+                call PacketHandler.send(TOS_NODE_ID, (uint8_t)AM_BROADCAST_ADDR, PROTOCOL_FLOOD, (uint8_t*) &fl_pkt);
             }
             else{ //ttl expired, drop the packet.
                 dbg(FLOODING_CHANNEL,"Stopping dead packet from %d\n",fl_pkt.og_src);
             }
         }
         else{ // Already propogated, drop the packet.
-            dbg(FLOODING_CHANNEL,"Duplicate packet from %hhu\n",fl_pkt.p_src);
+            dbg(FLOODING_CHANNEL,"Duplicate of %d's packet from %hhu\n",fl_pkt.og_src,fl_pkt.p_src);
         }
     }
 
@@ -72,7 +46,6 @@ implementation{
         floodSequence+=1;
 
         makefloodpack(&fl_pkt, TOS_NODE_ID, TOS_NODE_ID, floodSequence, ttl, ptl, pld);
-        //Encapsulate pack in a SimpleSend packet and broadcast it!
         post flood();
     }
 
