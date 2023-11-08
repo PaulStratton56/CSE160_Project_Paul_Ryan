@@ -40,7 +40,6 @@ implementation{
             uint8_t* pld = (uint8_t*)ws_pkt.pld;
             switch(ws_pkt.ptl){
                 case(PROTOCOL_TCP):
-                    dbg(TRANSPORT_CHANNEL, "I got a transport pack!\n");
                     signal Waysender.gotTCP(pld);
                     break;
 

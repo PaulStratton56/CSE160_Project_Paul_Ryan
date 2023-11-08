@@ -17,13 +17,13 @@ typedef nx_struct tcpack{
     nx_uint8_t dest;
     nx_uint8_t adWindow;
     nx_uint16_t seq;
-    nx_uint16_t ackseq;
+    nx_uint16_t nextExp;
     nx_uint8_t data[tc_max_pld_len];
 }tcpack;
 
 // logNDPack(...): Prints the parameters of a given ndpack to a given channel.
 void logTCpack(tcpack* input, char channel[]){
-	dbg(channel, "SYNC: %d | ACK: %d | FIN: %d | size: %d | DPort: %d | SPort: %d | Dest: %d | Src: %d | Window: %d | Seq: %d | Ack: %d\n",
+	dbg(channel, "SYNC: %d | ACK: %d | FIN: %d | size: %d | DPort: %d | SPort: %d | Dest: %d | Src: %d | Window: %d | Seq: %d | ExpSeq: %d\n",
 	(input->flagsandsize&128)/128,
     (input->flagsandsize&64)/64,
     (input->flagsandsize&32)/32,
@@ -34,7 +34,7 @@ void logTCpack(tcpack* input, char channel[]){
     input->src,
     input->adWindow,
     input->seq,
-    input->ackseq
+    input->nextExp
     );
 }
 
