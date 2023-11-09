@@ -18,6 +18,7 @@ module TinyControllerP{
 }
 
 implementation{
+    //Global Variables - not ideal, could implement a queue for these.
     tcpack storedMsg;
     uint32_t IDtoClose;
 
@@ -57,7 +58,13 @@ implementation{
     uint8_t* noData();
     void printSocket(uint32_t socketID);
 
-    //The brunt of the work - based on a connection state and flags, do something with the inbound packet.
+    /* == handlePack ==
+        Posted when an incoming TCPack is found and stored.
+        This basically is the implementation of the state diagram. 
+        Based on given flags and socket states (including not existing sockets),
+        Decide how to handle the stored packet.
+        USUALLY, the state will be CONNECTED and the message will be an ACK,
+        But this also accounts for Setup, Teardown, and a few edge cases as well. */
     task void handlePack(){
         uint8_t incomingFlags = (storedMsg.flagsandsize & 224)>>5;
         uint8_t incomingSrcPort = ((storedMsg.ports) & 240)>>4;
@@ -312,6 +319,9 @@ implementation{
     
     // }
 
+    /* == gotTCP ==
+        Signaled when routing (Waysender) gets a pack with PROTOCOL_TCP.
+        Copies the pkt into memory (storedMsg), and posts a handling task for that packet. */
     event void send.gotTCP(uint8_t* pkt){
         tcpack* incomingMsg = (tcpack*)pkt;
         dbg(TRANSPORT_CHANNEL, "Got TCpack\n");
@@ -320,6 +330,10 @@ implementation{
         post handlePack();
     }
 
+    /* == closeDelay.fired ==
+        Timer event that is called when the timer is called on moving to a CLOSING state.
+        This is a dummy timer used for testing, intended to represent the event of the application signalinig a closed state.
+        This causes TCP to send a FIN pack along the connection, and move to a CLOSED state. After the other node ACKs this FIN, the socket is removed. */
     event void closeDelay.fired(){
         tcpack finPack;
         socket_store_t mySocket = call sockets.get(IDtoClose);
@@ -337,16 +351,29 @@ implementation{
         printSocket(IDtoClose);
     }
 
+    /* == sendDelay.fired ==
+        This is a timer called when a node that began a connection moves to a CONNECTED state.
+        The application must wait a certain period of time before it is able to send data,
+        to ensure the receiving application is ready to receive. */
     event void sendDelay.fired(){
         //This will eventually signal that data is ready to be sent, but for now I'm testing teardown.
         dbg(TRANSPORT_CHANNEL, "Ready to Send Data!\n");
     }
 
+    /* == removeDelay.fired ==
+        Timer called when a connection moves to a WAIT_FINAL state. 
+        This removes the socket from the node by removing it from the hashmap of sockets. */
     event void removeDelay.fired(){
         dbg(TRANSPORT_CHANNEL, "Removing socket %d\n",IDtoClose);
         call sockets.remove(IDtoClose);
     }
 
+    /* == createSocket ==
+        Function that takes in values needed to initialize a socket.
+        Note that sometimes, a socket is created without knowing the other side's sequence number.
+        In this case, it is usually initialized to 0 until a SYNCACK tells the socket what sequence number
+        the other side intends to use.
+        Note that the sequence number is a uint16_t, and is randomized on initialization of a socket. */
     void createSocket(socket_store_t* socket, uint8_t state, socket_port_t srcPort, socket_port_t destPort, uint8_t dest, uint16_t destSeq){
         socket_addr_t newDest;
         newDest.port = destPort;
@@ -368,6 +395,9 @@ implementation{
         socket->seqToRecv = destSeq+1;  //This is the other's sequence number. (0 if we don't know)
     }
 
+    /* == makeTCPack ==
+        Called when a tcpack needs to be created.
+        Passes in the pack by reference to make with its parameters, and fills out each field. */
     void makeTCPack(tcpack* pkt, uint8_t sync, uint8_t ack, uint8_t fin, uint8_t size, uint8_t dPort, uint8_t sPort, uint8_t dest, uint8_t src, uint8_t adWindow, uint16_t seq, uint16_t nextExp, uint8_t* data){
 
         uint8_t flagField = 0;
@@ -396,6 +426,10 @@ implementation{
         memcpy(pkt->data, data, size);
     }
 
+    /* == printSocket ==
+        Debug print function useful to determine the current state of a socket.
+        Assuming the socket exists, prints the values stored in a given socket,
+        stored in the sockets hash under the passed "socketID" key. */
     void printSocket(uint32_t socketID){
         if(!call sockets.contains(socketID)){
             dbg(TRANSPORT_CHANNEL, "ERROR: No socket with ID %d exists.\n",socketID);
@@ -450,10 +484,16 @@ implementation{
         }
     }
 
+    /* == getSocketID ==
+        Returns a unique key for the sockets hash based on the 4-tuple identifiers of a socket.
+        (dest, destPort, src, srcPort). */
     uint32_t getSocketID(uint8_t dest, uint8_t destPort, uint8_t srcPort){
         return (dest<<4) + (TOS_NODE_ID<<8) + (destPort<<12) + (srcPort<<16);
     }
 
+    /* == noData ==
+        Returns a null pointer.
+        Useful for readability.. that's about it. */
     uint8_t* noData(){
         uint8_t* nothing = 0;
         return nothing;
