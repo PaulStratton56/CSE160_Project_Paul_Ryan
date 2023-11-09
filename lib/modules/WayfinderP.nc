@@ -39,7 +39,7 @@ implementation{
         nqPair temp = {0,0};
         nqPair current = {TOS_NODE_ID, 1};
         
-        if(TOS_NODE_ID==1)dbg(LSP_CHANNEL, "==================================================RUNNING DIJKSTRA==================================================\n");
+        // if(TOS_NODE_ID==1)dbg(LSP_CHANNEL, "==================================================RUNNING DIJKSTRA==================================================\n");
         // if(TOS_NODE_ID==1)call Wayfinder.printTopo();
         call routingTable.clearValues();                //because routing table stores old paths
         call routingTable.insert(TOS_NODE_ID,current);
@@ -120,7 +120,7 @@ implementation{
                 maxNode=data->pairs[i];
             }
             // dbg(LSP_CHANNEL,"Adding connection (%d,%d,%d)\n",data->src,data->pairs[i],data->pairs[i+1]);
-            if(data->pairs[i+1]<255)dbg(LSP_CHANNEL,"Quality %d between %d and %d\n",data->pairs[i+1],data->src,data->pairs[i]);
+            // if(data->pairs[i+1]<255)dbg(LSP_CHANNEL,"Quality %d between %d and %d\n",data->pairs[i+1],data->src,data->pairs[i]);
             topoTable[data->src][data->pairs[i]] = (float)data->pairs[i+1]/255;
             if(!call existenceTable.contains(data->pairs[i])){
                 call existenceTable.insert(data->pairs[i],FALSE);
