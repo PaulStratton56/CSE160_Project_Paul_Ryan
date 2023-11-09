@@ -9,6 +9,7 @@ module TinyControllerP{
     
     uses interface Hashmap<port_t> as ports;
     uses interface Hashmap<socket_store_t> as sockets;
+    uses interface Queue<uint32_t> as sendQueue;
 
     uses interface Timer<TMilli> as sendDelay;
     uses interface Timer<TMilli> as removeDelay; // Timer to remove the socket after moving to WAIT_FINAL state.
@@ -84,14 +85,19 @@ implementation{
                         case(SYNC_RCVD):
                             //Signal that data is probably inbound!
                             mySocket.state = CONNECTED;
-
                             call sockets.insert(mySocketID, mySocket);
                             dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
                             printSocket(mySocketID);
+                            signal TinyController.connected(mySocketID);//all apps connected to tcp know about all sockets
                             break;
 
                         case(CONNECTED):
                             //Received an ack to our data, update window, etc.
+                            dbg(TRANSPORT_CHANNEL,"Message was '%s'\n",storedMsg.data);
+                            call sockets.insert(mySocketID, mySocket);
+                            dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
+                            printSocket(mySocketID);
+                            signal TinyController.gotData(mySocketID);
                             break;
 
                         case(WAIT_ACKFIN):
@@ -139,7 +145,7 @@ implementation{
                         call removeDelay.startOneShot(2*mySocket.RTT);
                     }
                     
-                    { // NOW ENTERING: THE A C K S C O P E
+                    { // NOW ENTERING: THE ACK SCOPE
                     tcpack ackPack;
                     mySocket.seq++;
                     makeTCPack(&ackPack, 0, 1, 0, 0, mySocket.dest.port, mySocket.srcPort, mySocket.dest.addr, TOS_NODE_ID, 1, mySocket.seq, mySocket.seqToRecv, noData());
@@ -240,14 +246,14 @@ implementation{
             Finally, adds the new socket to the 'sockets' hash using the socketID as a key (where socketID is a combination of the 4-tuple dest/src, dest/srcPort).
         Returns FAIL if the application does not have a leased port, SUCCESS if otherwise.
         Note: There are more checks to do here - does this app have the right to request on this srcPort? Does the destPort exist? Etc. */
-    command error_t TinyController.requestConnection(uint8_t dest, uint8_t destPort, uint8_t srcPort){
+    command uint32_t TinyController.requestConnection(uint8_t dest, uint8_t destPort, uint8_t srcPort){
         socket_store_t newSocket;
         tcpack syncPack;
         uint32_t socketID;
 
         if(!call ports.contains(srcPort)){
             dbg(TRANSPORT_CHANNEL, "ERROR: cannot make socket with port %d (unused).\n",srcPort);
-            return FAIL;
+            return 0;
         }
 
         socketID = getSocketID(dest, destPort, srcPort);
@@ -263,7 +269,7 @@ implementation{
         call sockets.insert(socketID, newSocket);
         dbg(TRANSPORT_CHANNEL, "New Socket:\n");
         printSocket(socketID);
-        return SUCCESS;
+        return socketID;
     }
 
     /* == closeConnection ==
@@ -302,12 +308,78 @@ implementation{
         return SUCCESS;
     }
 
-    // command bool send(uint8_t* payload){
+    task void sendData(){//currently not considering advertised window
+        uint32_t socketID;
+        socket_store_t socket;
+        uint8_t length;
+        tcpack packet;
+        if(call sendQueue.size()>0){
+            socketID = call sendQueue.dequeue();
+            socket = call sockets.get(socketID);
+            if(socket.nextToSend!=socket.nextToWrite){
+                length = socket.nextToWrite-socket.nextToSend>tc_max_pld_len? tc_max_pld_len : socket.nextToWrite-socket.nextToSend;
+                socket.seq++;
+                makeTCPack(&packet,0,1,0,
+                            length,
+                            socket.dest.port,socket.srcPort,socket.dest.addr,TOS_NODE_ID,
+                            (SOCKET_BUFFER_SIZE-(socket.nextToWrite-socket.nextToSend))%SOCKET_BUFFER_SIZE,
+                            socket.seq,socket.nextExpected,&(socket.sendBuff[socket.nextToSend]));
+                call send.send(255,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&packet);
+                dbg(TRANSPORT_CHANNEL,"Data Sent!\n");
+                socket.nextToSend = (socket.nextToSend+length)%SOCKET_BUFFER_SIZE;
+                if(socket.nextToSend!=socket.nextToWrite){
+                    call sendQueue.enqueue(socketID);
+                }
+                call sockets.insert(socketID,socket);
+            }
+            else{
+                dbg(TRANSPORT_CHANNEL,"No data in sendBuffer of socket %d\n",socketID);
+            }
+            if(call sendQueue.size()>0){
+                post sendData();
+            }
+        }
+    }
 
+    command error_t TinyController.write(uint32_t socketID, uint8_t* payload, uint8_t length){
+        socket_store_t socket;
+        if(call sockets.contains(socketID)){
+            socket = call sockets.get(socketID);
+            if(socket.state == CONNECTED){
+                //may cause seg faults, double check exact byte math!
+                if(socket.nextToSend-(socket.nextToWrite+length)<SOCKET_BUFFER_SIZE){//if room in buffer including wrap around
+                    if(socket.nextToWrite+length<SOCKET_BUFFER_SIZE){
+                        memcpy(&(socket.sendBuff[socket.nextToWrite]),payload,length);
+                    }
+                    else{//buffer wrap around
+                        uint8_t remaining = socket.nextToWrite+length-SOCKET_BUFFER_SIZE;
+                        memcpy(&(socket.sendBuff[socket.nextToWrite]),payload,remaining);
+                        memcpy(&(socket.sendBuff[0]),payload+remaining,length-remaining);
+                    }
+                    socket.nextToWrite= (socket.nextToWrite+length)%SOCKET_BUFFER_SIZE;
+                    call sockets.insert(socketID,socket);
+                    call sendQueue.enqueue(socketID);
+                    post sendData();
+                    return SUCCESS;
+                }
+                else{
+                    dbg(TRANSPORT_CHANNEL,"Buffer Overflow for socket %d\n",socketID);
+                    return FAIL;
+                }
+            }
+            else{
+                dbg(TRANSPORT_CHANNEL,"Socket %d in state %d, not CONNECTED state\n",socketID,socket.state);
+                return FAIL;
+            }
+        }
+        else{
+            dbg(TRANSPORT_CHANNEL,"Socket %d doesn't exist\n",socketID);
+            return FAIL;
+        }
 
-    // }
+    }
 
-    // command uint8_t* receive(){
+    // command uint8_t* read(){
 
     
     // }
@@ -339,6 +411,7 @@ implementation{
 
     event void sendDelay.fired(){
         //This will eventually signal that data is ready to be sent, but for now I'm testing teardown.
+        signal TinyController.connected(0);//all apps connected to tcp know about all sockets
         dbg(TRANSPORT_CHANNEL, "Ready to Send Data!\n");
     }
 

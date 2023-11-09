@@ -160,48 +160,44 @@ def main():
     # s.loadTopo("example.topo")
     # s.loadTopo("circle.topo")
     s.loadTopo("tuna-melt.topo")
+    # s.loadTopo("covid.topo")
     # s.loadTopo("dense.topo")
     # s.loadTopo("pizza.topo")
     # s.loadTopo("star.topo")
 
     s.loadNoise("no_noise.txt")
     
-    # s.addChannel(s.COMMAND_CHANNEL)    
-    # s.addChannel(s.NEIGHBOR_CHANNEL)
-    # s.addChannel(s.COMMAND_CHANNEL)
     # s.addChannel(s.GENERAL_CHANNEL)
-    s.addChannel(s.TRANSPORT_CHANNEL)
-    # s.addChannel(s.ROUTING_CHANNEL)                                            
+    # s.addChannel(s.NEIGHBOR_CHANNEL)
     # s.addChannel(s.FLOODING_CHANNEL)
     # s.addChannel(s.ROUTING_CHANNEL)                                                
-    # s.addChannel(s.NEIGHBOR_CHANNEL)
-    # s.addChannel(s.GENERAL_CHANNEL)
     # s.addChannel(s.LSP_CHANNEL)
+    s.addChannel(s.TRANSPORT_CHANNEL)
     
     s.bootAll()
     
-    '''=== TINYCONTROLLER SIM ==='''
-    s.runTime(32)
+    # '''=== TINYCONTROLLER SIM ==='''
+    s.runTime(512)
 
-    s.connect(1,2)
+    # s.connect(1,2)
 
-    s.runTime(50)
+    # s.runTime(50)
 
-    s.connect(2,9)
+    # s.connect(2,9)
 
-    s.runTime(50)
+    # s.runTime(50)
 
-    s.disconnect(1,2)
+    # s.disconnect(1,2)
 
-    s.runTime(500)
+    # s.runTime(500)
 
 
     '''=== DEBUGGING SIM ==='''
-    # x=1
+    # x=4
     # y=21
     # print "\n================================================\n                ROUTING:", x ,"-->",y,"               \n================================================\n" 
     # s.route(x,y,"x->y")
-    # s.runTime(4)
+    # s.runTime(16)
     
     # print "\n================================================\n                ROUTING:",x,"--> 1                \n================================================\n"
     # s.route(x,1,"x->1")

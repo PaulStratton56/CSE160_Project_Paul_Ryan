@@ -48,4 +48,7 @@ implementation {
 
     components floodingC;
     Node.flood -> floodingC;
+
+    components convoC;
+    Node.convo -> convoC;
 }

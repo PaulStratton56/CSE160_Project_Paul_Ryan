@@ -28,6 +28,7 @@ module Node{
    uses interface Waysender as router;
    uses interface TinyController as TCP;
    uses interface PacketHandler;
+   uses interface convo;
 
 
    uses interface CommandHandler;
@@ -48,7 +49,8 @@ implementation{
          //When done booting, start the ND Ping timer.
          call nd.onBoot();
          call Wayfinder.onBoot();
-         call TCP.getPort(1,69);
+         call convo.onBoot();
+         // call TCP.getPort(1,69);
 
       }else{
          //Retry until successful
@@ -123,4 +125,7 @@ implementation{
    event void CommandHandler.setAppClient(){}
 
    event void router.gotTCP(uint8_t* _){}
+
+   event void TCP.connected(uint32_t _){}
+   event void TCP.gotData(uint32_t _){}
 }

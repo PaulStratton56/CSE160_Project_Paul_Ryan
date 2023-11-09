@@ -17,6 +17,9 @@ implementation{
     components new HashmapC(socket_store_t, 255) as sockets;
     TinyControllerP.sockets -> sockets;
 
+    components new QueueC(uint32_t,32) as sendQueue;
+    TinyControllerP.sendQueue -> sendQueue;
+
     components new TimerMilliC() as sendDelay;
     TinyControllerP.sendDelay -> sendDelay;
 

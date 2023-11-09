@@ -7,7 +7,7 @@
 enum{
 	tc_header_len = 9,
 	tc_pkt_len = ws_max_pld_len,
-	tc_max_pld_len = tc_pkt_len - tc_header_len
+	tc_max_pld_len = tc_pkt_len - tc_header_len //12
 };
 
 typedef nx_struct tcpack{
