@@ -1,5 +1,5 @@
 #include "../../includes/nqPair.h"
-
+#include "../../includes/LSPBuffer.h"
 
 configuration WayfinderC{
     provides interface Wayfinder;
@@ -22,6 +22,9 @@ implementation{
     components new HashmapC(bool, 32) as existenceTable;
     WayfinderP.existenceTable -> existenceTable; 
 
+    components new HashmapC(lspBuffer,256) as reassembler;
+    WayfinderP.reassembler -> reassembler;
+
     components new TimerMilliC() as lspTimer;
     WayfinderP.lspTimer -> lspTimer;
     
@@ -30,4 +33,7 @@ implementation{
 
     components new HeapC(32) as unexplored;
     WayfinderP.unexplored -> unexplored;
+
+    components new QueueC(lsp,32) as lspQueue;
+    WayfinderP.lspQueue -> lspQueue;
 }

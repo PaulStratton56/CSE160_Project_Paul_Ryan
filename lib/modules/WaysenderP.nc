@@ -18,8 +18,8 @@ implementation{
     task void forward(){
         if(ws_pkt.ttl>0){
             uint8_t nextHop = call router.getRoute(ws_pkt.dst);
-            // call router.printRoutingTable();
-            // call router.printTopo();
+            call router.printRoutingTable();
+            call router.printTopo();
             if(nextHop == 0){ // If the next hop is unknown, stop.
                 // call router.printRoutingTable();
                 dbg(ROUTING_CHANNEL, "Not sure how to get to %d. Dropping Packet.\n", ws_pkt.dst);

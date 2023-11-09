@@ -13,7 +13,7 @@ char FLOODING_CHANNEL[]="flooding";
 
 // Project 2
 char ROUTING_CHANNEL[]="routing";
-
+char LSP_CHANNEL[]="lsps";
 // Project 3
 char TRANSPORT_CHANNEL[]="transport";
 

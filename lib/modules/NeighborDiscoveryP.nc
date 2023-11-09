@@ -135,7 +135,7 @@ implementation{
         Called from Node.nc's "startDone" function.
         Posts a ping task to start the timer and introduce a node to its neighbors. */
     command void neighborDiscovery.onBoot(){
-        call pingTimer.startOneShot(TOS_NODE_ID%4 * 250);
+        call pingTimer.startOneShot(TOS_NODE_ID%16 * 400);
     }
     
     //getNeighbors() returns a list of node IDs that are considered neighbors.
@@ -162,9 +162,10 @@ implementation{
         uint32_t* myNeighbors = call neighborhood.getKeys();
         uint16_t size = call neighborhood.size();
         int i=0;
-        assembledData[0]=2*size+1;
+        assembledData[0]=size;
         for(i=0;i<size;i++){
             assembledData[2*i+1] = myNeighbors[i];
+            //check neighbor quality is not 0;
             assembledData[2*i+2] = (call neighborhood.get(myNeighbors[i])).quality;
         }
         return &assembledData[0];

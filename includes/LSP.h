@@ -4,8 +4,8 @@
 #include "floodpack.h"
 
 enum{
-    lsp_header_len = 3,
-    lsp_len = pkt_max_pld_len,
+    lsp_header_len = 4,
+    lsp_len = fl_max_pld_len,
     lsp_max_pld_len = lsp_len - lsp_header_len
 };
 
@@ -18,13 +18,14 @@ enum{
 typedef struct lsp{
     nx_uint8_t src;
     nx_uint16_t seq;
+    nx_uint8_t offset;
     nx_uint8_t pld[lsp_max_pld_len];
 }lsp;
 
 // logLSP(...): Prints the parameters of a given lsp to a given channel.
 void logLSP(lsp* input, char channel[]){
-	dbg(channel, "SRC: %d | SEQ: %d\n",
-	input->src,input->seq);
+	dbg(channel, "SRC: %d | SEQ: %d | OFFSET: %d\n",
+	input->src,input->seq,input->offset);
 }
 
 #endif

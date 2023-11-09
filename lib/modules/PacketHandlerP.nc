@@ -51,10 +51,11 @@ implementation{
     }
 
     void makePack(pack *pkg, uint16_t src, uint16_t dst, uint16_t ptl, uint8_t* pld){
-      pkg->src = src;
-      pkg->dst = dst;
-      pkg->ptl = ptl;
-      memcpy(pkg->pld, pld, pkt_max_pld_len);
-   }
+        memset(pkg,0,pkt_len);
+        pkg->src = src;
+        pkg->dst = dst;
+        pkg->ptl = ptl;
+        memcpy(pkg->pld, pld, pkt_max_pld_len);
+    }
 
 }

@@ -12,6 +12,9 @@ implementation{
    components new HashmapC(uint16_t,256) as packets;
    floodingP.packets -> packets;
 
+   components new QueueC(floodpack,32) as floodQueue;
+   floodingP.floodQueue->floodQueue;
+
    components neighborDiscoveryC as neighborhood;
    floodingP.neighborhood -> neighborhood;
    

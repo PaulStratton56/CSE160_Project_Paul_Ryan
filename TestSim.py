@@ -27,7 +27,7 @@ class TestSim:
 
     # Project 2
     ROUTING_CHANNEL="routing"
-
+    LSP_CHANNEL="lsps"
     # Project 3
     TRANSPORT_CHANNEL="transport"
 
@@ -148,27 +148,30 @@ def main():
 
     # s.loadTopo("long_line.topo")
     # s.loadTopo("smalltopo.topo")
+    # s.loadTopo("tiny.topo")
     # s.loadTopo("example.topo")
     # s.loadTopo("circle.topo")
     s.loadTopo("tuna-melt.topo")
+    # s.loadTopo("dense.topo")
     # s.loadTopo("pizza.topo")
+    # s.loadTopo("star.topo")
 
     s.loadNoise("no_noise.txt")
-
-    s.runTime(32)
     
     # s.addChannel(s.COMMAND_CHANNEL)    
     # s.addChannel(s.FLOODING_CHANNEL)
     s.addChannel(s.ROUTING_CHANNEL)                                                
     s.addChannel(s.NEIGHBOR_CHANNEL)
     s.addChannel(s.GENERAL_CHANNEL)
-
+    s.addChannel(s.LSP_CHANNEL)
+    
     s.bootAll()
     
-    s.runTime(128)
-    x=23
-    print "\n================================================\n                ROUTING: 1 -->",x,"               \n================================================\n" 
-    s.route(1,x,"1->x")
+    s.runTime(32)
+    x=1
+    y=21
+    print "\n================================================\n                ROUTING:", x ,"-->",y,"               \n================================================\n" 
+    s.route(x,y,"x->y")
     s.runTime(4)
     
     # print "\n================================================\n                ROUTING:",x,"--> 1                \n================================================\n"
