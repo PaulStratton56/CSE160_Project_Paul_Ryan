@@ -9,11 +9,16 @@ enum{
 };
 
 enum socket_state{
-    CLOSED,
     LISTEN,
     CONNECTED,
     SYNC_SENT,
     SYNC_RCVD,
+    WAIT_ACKFIN,
+    WAIT_FIN,
+    WAIT_ACK,
+    WAIT_FINAL,
+    CLOSED,
+    CLOSING,
 };
 
 typedef uint8_t port_t;

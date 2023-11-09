@@ -15,6 +15,7 @@ class TestSim:
     CMD_ROUTE_DUMP=3
     CMD_ROUTE = 10
     CMD_CONNECT = 11
+    CMD_DISCONNECT = 12
     CMD_FLOOD = 31
     
     # CHANNELS - see includes/channels.h
@@ -129,6 +130,9 @@ class TestSim:
     
     def connect(self, source, dest):
         self.sendCMD(self.CMD_CONNECT, source, "{0}{1}".format(chr(dest),""))
+    
+    def disconnect(self, source, dest):
+        self.sendCMD(self.CMD_DISCONNECT, source, "{0}{1}".format(chr(dest),""))
 
     def flood(self,source,msg):
         self.sendCMD(self.CMD_FLOOD,source,"{0}{1}".format(chr(source),msg))
@@ -171,10 +175,13 @@ def main():
 
     s.runTime(50)
 
-    # s.connect(2,9)
+    s.connect(2,9)
 
-    # s.runTime(50)
+    s.runTime(50)
 
+    s.disconnect(1,2)
+
+    s.runTime(50)
 
     # print("\n================================================\n                ROUTING: 1 --> 7                \n================================================\n")
     # s.route(1,7,"1->7")

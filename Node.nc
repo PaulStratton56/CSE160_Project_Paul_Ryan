@@ -99,6 +99,11 @@ implementation{
       dbg(GENERAL_CHANNEL, "CONNECT EVENT\n");
       call TCP.requestConnection(dest, 1, 1);
    }
+   
+   event void CommandHandler.disconnect(uint8_t dest){
+      dbg(GENERAL_CHANNEL, "DISCONNECT EVENT\n");
+      call TCP.closeConnection(dest, 1, 1);
+   }
 
    event void CommandHandler.printNeighbors(){}
 

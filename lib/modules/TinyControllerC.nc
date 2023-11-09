@@ -8,9 +8,6 @@ implementation{
     components TinyControllerP;
     TinyController = TinyControllerP.TinyController;
 
-    components PacketHandlerC;
-    TinyControllerP.PacketHandler -> PacketHandlerC;
-
     components WaysenderC;
     TinyControllerP.send -> WaysenderC;
 
@@ -22,6 +19,12 @@ implementation{
 
     components new TimerMilliC() as sendDelay;
     TinyControllerP.sendDelay -> sendDelay;
+
+    components new TimerMilliC() as removeDelay;
+    TinyControllerP.removeDelay -> removeDelay;
+
+    components new TimerMilliC() as closeDelay;
+    TinyControllerP.closeDelay -> closeDelay;
 
     components RandomC as Random;
     TinyControllerP.Random -> Random;

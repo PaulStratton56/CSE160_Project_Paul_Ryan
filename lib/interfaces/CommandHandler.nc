@@ -4,6 +4,7 @@ interface CommandHandler{
    event void flood(uint8_t* payload);
    event void route(uint8_t dest, uint8_t* payload);
    event void connect(uint8_t dest);
+   event void disconnect(uint8_t dest);
    event void printNeighbors();
    event void printRouteTable();
    event void printLinkState();
