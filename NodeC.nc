@@ -40,6 +40,9 @@ implementation {
     components WaysenderC;
     Node.router -> WaysenderC;
 
+    components TinyControllerC;
+    Node.TCP -> TinyControllerC;
+
     components PacketHandlerC;
     Node.PacketHandler -> PacketHandlerC;
 

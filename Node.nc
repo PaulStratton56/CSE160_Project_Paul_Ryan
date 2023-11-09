@@ -26,6 +26,7 @@ module Node{
    uses interface flooding as flood;
    uses interface Wayfinder;
    uses interface Waysender as router;
+   uses interface TinyController as TCP;
    uses interface PacketHandler;
 
 
@@ -47,6 +48,7 @@ implementation{
          //When done booting, start the ND Ping timer.
          call nd.onBoot();
          call Wayfinder.onBoot();
+         call TCP.getPort(1,69);
 
       }else{
          //Retry until successful
@@ -94,6 +96,16 @@ implementation{
       call router.send(255, dest, PROTOCOL_ROUTING, payload);
    }
    
+   event void CommandHandler.connect(uint8_t dest){
+      dbg(GENERAL_CHANNEL, "CONNECT EVENT\n");
+      call TCP.requestConnection(dest, 1, 1);
+   }
+   
+   event void CommandHandler.disconnect(uint8_t dest){
+      dbg(GENERAL_CHANNEL, "DISCONNECT EVENT\n");
+      call TCP.closeConnection(dest, 1, 1);
+   }
+
    event void CommandHandler.printNeighbors(){}
 
    event void CommandHandler.printRouteTable(){}
@@ -109,4 +121,6 @@ implementation{
    event void CommandHandler.setAppServer(){}
 
    event void CommandHandler.setAppClient(){}
+
+   event void router.gotTCP(uint8_t* _){}
 }

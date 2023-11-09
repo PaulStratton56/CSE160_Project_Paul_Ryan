@@ -34,6 +34,27 @@ implementation{
         }
     }
 
+    /* == gotRoutedPacket ==
+        Posted when PacketHandler signals a routed packet.
+        Checks if node is the destination to pass to higher modules, otherwise forwards the routing packet. */
+    task void gotRoutedPacket(){
+        if(ws_pkt.dst == TOS_NODE_ID){
+            uint8_t* pld = (uint8_t*)ws_pkt.pld;
+            switch(ws_pkt.ptl){
+                case(PROTOCOL_TCP):
+                    signal Waysender.gotTCP(pld);
+                    break;
+
+                default:
+                    dbg(ROUTING_CHANNEL, "I am the routing destination!\n");
+                    break;
+            }
+        }
+        else{
+            post forward();
+        }
+    }
+
     // send: increments sequence, creates a pack, and forwards its own pack. Called when routing is needed.
     // Assumes that above modules have already fragmented. (TCP, etc.)
     command void Waysender.send(uint8_t ttl, uint8_t dst, uint8_t ptl, uint8_t* pld){
@@ -46,16 +67,7 @@ implementation{
         Copies the packet into memory and posts the gotRoutedPacket task. */
     event void PacketHandler.gotRouted(uint8_t* incomingMsg){
         memcpy(&ws_pkt, incomingMsg, ws_pkt_len);
-        if(ws_pkt.dst == TOS_NODE_ID){
-            switch(ws_pkt.ptl){
-                default:
-                    dbg(ROUTING_CHANNEL, "I am the routing destination!\n");
-                    break;
-            }
-        }
-        else{
-            post forward();
-        }
+        post gotRoutedPacket();
     }
 
     /*== makewspack(...) ==
