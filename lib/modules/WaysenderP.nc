@@ -6,6 +6,7 @@ module WaysenderP{
 
     uses interface Wayfinder as router;
     uses interface PacketHandler;
+    uses interface Timer<TMilli> as t;
 }
 
 implementation{
@@ -16,22 +17,26 @@ implementation{
 
     // forward: forwards the received packet according to the routing table.
     task void forward(){
-        if(ws_pkt.ttl>0){
-            uint8_t nextHop = call router.getRoute(ws_pkt.dst);
-            call router.printRoutingTable();
-            call router.printTopo();
-            if(nextHop == 0){ // If the next hop is unknown, stop.
-                // call router.printRoutingTable();
-                dbg(ROUTING_CHANNEL, "Not sure how to get to %d. Dropping Packet.\n", ws_pkt.dst);
+        uint32_t currTime = call t.getNow();
+        if(currTime<66000 || currTime%31>0){
+            if(ws_pkt.ttl>0){
+                uint8_t nextHop = call router.getRoute(ws_pkt.dst);
+                call router.printRoutingTable();
+                call router.printTopo();
+                if(nextHop == 0){ // If the next hop is unknown, stop.
+                    // call router.printRoutingTable();
+                    dbg(ROUTING_CHANNEL, "Not sure how to get to %d. Dropping Packet.\n", ws_pkt.dst);
+                }
+                else{ // Otherwise, forward the pack.
+                    call PacketHandler.send(TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &ws_pkt);
+                    dbg(ROUTING_CHANNEL, "O_SRC: %d, dst: %d, N_HOP: %d, pld: '%s'\n",ws_pkt.src, ws_pkt.dst, nextHop, (char*)ws_pkt.pld);
+                }
             }
-            else{ // Otherwise, forward the pack.
-                call PacketHandler.send(TOS_NODE_ID, nextHop, PROTOCOL_ROUTING, (uint8_t*) &ws_pkt);
-                dbg(ROUTING_CHANNEL, "O_SRC: %d, dst: %d, N_HOP: %d, pld: '%s'\n",ws_pkt.src, ws_pkt.dst, nextHop, (char*)ws_pkt.pld);
+            else{
+                dbg(ROUTING_CHANNEL, "Dead Packet. Won't Forward\n");
             }
         }
-        else{
-            dbg(ROUTING_CHANNEL, "Dead Packet. Won't Forward\n");
-        }
+        else{dbg(TRANSPORT_CHANNEL,"You're stupid. You're screwed. Who cares? So I dropped the packet, LOL\n");}
     }
 
     /* == gotRoutedPacket ==
@@ -92,5 +97,5 @@ implementation{
     /* Used for other modules, disregard. */
     event void PacketHandler.gotPing(uint8_t* _) {}
     event void PacketHandler.gotflood(uint8_t* _) {}
-
+    event void t.fired(){}
 }

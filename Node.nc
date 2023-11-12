@@ -127,5 +127,5 @@ implementation{
    event void router.gotTCP(uint8_t* _){}
 
    event void TCP.connected(uint32_t _){}
-   event void TCP.gotData(uint32_t _){}
+   event void TCP.gotData(uint32_t _,uint8_t __){}
 }

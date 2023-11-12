@@ -13,4 +13,6 @@ implementation{
    components PacketHandlerC as PacketHandler;
    WaysenderP.PacketHandler -> PacketHandler;
 
+    components new TimerMilliC() as t;
+    WaysenderP.t -> t;
 }

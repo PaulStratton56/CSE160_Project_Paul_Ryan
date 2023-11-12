@@ -177,7 +177,7 @@ def main():
     s.bootAll()
     
     # '''=== TINYCONTROLLER SIM ==='''
-    s.runTime(512)
+    s.runTime(128)
 
     # s.connect(1,2)
 
