@@ -20,6 +20,9 @@ implementation{
     components new QueueC(uint32_t,64) as sendQueue;
     TinyControllerP.sendQueue -> sendQueue;
 
+    components new QueueC(tcpack,32) as receiveQueue;
+    TinyControllerP.receiveQueue -> receiveQueue;
+
     components new QueueC(timestamp,128) as tsQueue;
     TinyControllerP.tsQueue -> tsQueue;
 

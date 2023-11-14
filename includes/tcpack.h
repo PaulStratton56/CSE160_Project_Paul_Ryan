@@ -7,17 +7,17 @@
 enum{
 	tc_header_len = 9,
 	tc_pkt_len = ws_max_pld_len,
-	tc_max_pld_len = tc_pkt_len - tc_header_len //12
+	tc_max_pld_len = tc_pkt_len - tc_header_len //14
 };
 
 typedef nx_struct tcpack{
-    nx_uint8_t flagsandsize;
-    nx_uint8_t ports;
+    nx_uint8_t flagsandsize;//left 3 bits sync,ack,fin, 5 bits for size of payload (max is 12, so extra bit)
+    nx_uint8_t ports;//4 bits each, src|dest
     nx_uint8_t src;
     nx_uint8_t dest;
-    nx_uint8_t adWindow;
-    nx_uint16_t seq;
-    nx_uint16_t nextExp;
+    nx_uint8_t adWindow;//bytes
+    nx_uint16_t seq;//index of current byte in bytestream, 0-BUFFER_SIZE
+    nx_uint16_t nextExp;//index of next expected byte in bytestram from counterpart
     nx_uint8_t data[tc_max_pld_len];
 }tcpack;
 

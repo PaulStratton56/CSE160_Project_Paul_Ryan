@@ -18,7 +18,7 @@ implementation{
     // forward: forwards the received packet according to the routing table.
     task void forward(){
         uint32_t currTime = call t.getNow();
-        if(currTime<66000 || currTime%31>0){
+        if(TRUE || currTime<66000 || currTime%31>0){
             if(ws_pkt.ttl>0){
                 uint8_t nextHop = call router.getRoute(ws_pkt.dst);
                 call router.printRoutingTable();

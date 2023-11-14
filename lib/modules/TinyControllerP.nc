@@ -11,6 +11,7 @@ module TinyControllerP{
     uses interface Hashmap<port_t> as ports;
     uses interface Hashmap<socket_store_t> as sockets;
     uses interface Queue<uint32_t> as sendQueue;
+    uses interface Queue<tcpack> as receiveQueue;
     uses interface Queue<timestamp> as tsQueue;
 
     uses interface Timer<TMilli> as tsTimer;
@@ -63,16 +64,12 @@ implementation{
     void printSocket(uint32_t socketID);
     task void sendData();//currently not considering advertised window
     void makeTimeStamp(timestamp* ts, uint32_t timeout, uint32_t socketID,uint16_t seq, uint8_t byte);
+    uint32_t getSID(tcpack msg);
+
     void printTimeStamp(timestamp* ts){
         dbg(TRANSPORT_CHANNEL,"timestamp: exp: %d | id: %d | seq:%d | byte:%d\n",ts->expiration,ts->id,ts->seq,ts->byte);
     }
 
-    uint32_t getSID(tcpack msg){
-        uint8_t incomingSrcPort = (msg.ports & 240)>>4;
-        uint8_t incomingDestPort = (msg.ports) & 15;
-        
-        return getSocketID(msg.src, incomingSrcPort, incomingDestPort);        
-    }
     task void checkTimeouts(){
         int i=0;
         int numInFlight = call tsQueue.size();
@@ -117,19 +114,21 @@ implementation{
         }
         if(call tsQueue.size()>0)call tsTimer.startOneShot(timeoutTime);
     }
+    
     //The brunt of the work - based on a connection state and flags, do something with the inbound packet.
     task void handlePack(){
-        uint8_t incomingFlags = (storedMsg.flagsandsize & 224)>>5;
-        uint8_t incomingSize = storedMsg.flagsandsize & 31;
-        uint8_t incomingSrcPort = ((storedMsg.ports) & 240)>>4;
-        uint8_t incomingDestPort = (storedMsg.ports) & 15;
+        tcpack incomingMsg = call receiveQueue.dequeue();
+        uint8_t incomingFlags = (incomingMsg.flagsandsize & 224)>>5;
+        uint8_t incomingSize = incomingMsg.flagsandsize & 31;
+        uint8_t incomingSrcPort = ((incomingMsg.ports) & 240)>>4;
+        uint8_t incomingDestPort = (incomingMsg.ports) & 15;
         
-        uint32_t mySocketID = getSocketID(storedMsg.src, incomingSrcPort, incomingDestPort);
+        uint32_t mySocketID = getSocketID(incomingMsg.src, incomingSrcPort, incomingDestPort);
 
         if(call sockets.contains(mySocketID)){
             socket_store_t mySocket = call sockets.get(mySocketID);
-            if(mySocket.seqToRecv < storedMsg.seq && mySocket.state != SYNC_SENT){
-                dbg(TRANSPORT_CHANNEL, "Unexpected Seq Order: Expected %d, got %d. Dropping Packet\n",mySocket.seqToRecv, storedMsg.seq);
+            if(mySocket.seqToRecv < incomingMsg.seq && mySocket.state != SYNC_SENT){
+                dbg(TRANSPORT_CHANNEL, "Unexpected Seq Order: Expected %d, got %d. Dropping Packet\n",mySocket.seqToRecv, incomingMsg.seq);
                 return;//no holes allowed for now
             }
             else{
@@ -142,16 +141,16 @@ implementation{
                         // dbg(TRANSPORT_CHANNEL,"Got Data. IncomingSize:%d\n",incomingSize);
                         if(SOCKET_BUFFER_SIZE-((SOCKET_BUFFER_SIZE + (mySocket.nextToRead-mySocket.nextExpected))%SOCKET_BUFFER_SIZE)>=incomingSize){//if room in buffer including wrap around
                             tcpack acker;
-                            if(storedMsg.seq==mySocket.seqToRecv-1){
+                            if(incomingMsg.seq==mySocket.seqToRecv-1){
                                 if(mySocket.nextExpected+incomingSize<SOCKET_BUFFER_SIZE){
                                     // dbg(TRANSPORT_CHANNEL,"No wrap\n");
-                                    memcpy(&(mySocket.recvBuff[mySocket.nextExpected]),storedMsg.data,incomingSize);
+                                    memcpy(&(mySocket.recvBuff[mySocket.nextExpected]),incomingMsg.data,incomingSize);
                                 }
                                 else{//buffer wrap around
                                     uint8_t remaining = mySocket.nextExpected+incomingSize-SOCKET_BUFFER_SIZE;
                                     // dbg(TRANSPORT_CHANNEL,"Looping Buffer\n");
-                                    memcpy(&(mySocket.recvBuff[mySocket.nextExpected]),storedMsg.data,remaining);
-                                    memcpy(&(mySocket.recvBuff[0]),&(storedMsg.data[0])+remaining,incomingSize-remaining);
+                                    memcpy(&(mySocket.recvBuff[mySocket.nextExpected]),incomingMsg.data,remaining);
+                                    memcpy(&(mySocket.recvBuff[0]),&(incomingMsg.data[0])+remaining,incomingSize-remaining);
                                 }
                                 // dbg(TRANSPORT_CHANNEL,"NR:%d, NE:%d, Saved %d bytes to RecvBuff: '%s'\n",mySocket.nextToRead,mySocket.nextExpected,incomingSize,mySocket.recvBuff+mySocket.nextToRead);
 
@@ -160,14 +159,14 @@ implementation{
                                 mySocket.seq++;
                             }
                             else{
-                                mySocket.seqToRecv = storedMsg.seq+1;
+                                mySocket.seqToRecv = incomingMsg.seq+1;//problem for sliding window 
                             }
                             makeTCPack(&acker,0,1,0,incomingSize,
-                                incomingSrcPort,incomingDestPort,storedMsg.src,TOS_NODE_ID,
+                                incomingSrcPort,incomingDestPort,incomingMsg.src,TOS_NODE_ID,
                                 (SOCKET_BUFFER_SIZE+mySocket.nextToRead-mySocket.nextExpected)%SOCKET_BUFFER_SIZE,
                                 mySocket.seq,mySocket.seqToRecv,noData());
                             call send.send(255,mySocket.dest.addr,PROTOCOL_TCP,(uint8_t*)&acker);
-                            // dbg(TRANSPORT_CHANNEL,"Got seq %d. Acking %d\n",storedMsg.seq,mySocket.seqToRecv);
+                            dbg(TRANSPORT_CHANNEL,"Got seq %d. Acking %d. mySeq:%d\n",incomingMsg.seq,mySocket.seqToRecv,mySocket.seq);
                             call sockets.insert(mySocketID,mySocket);
                             // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
                             // printSocket(mySocketID);
@@ -191,7 +190,7 @@ implementation{
                         case(SYNC_RCVD):
                             //Signal that data is probably inbound!
                             mySocket.state = CONNECTED;
-                            dbg(TRANSPORT_CHANNEL,"Connection Established!\n");
+                            dbg(TRANSPORT_CHANNEL,"Connection Established for socket %d!\n",mySocketID);
                             call sockets.insert(mySocketID, mySocket);
                             // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
                             // printSocket(mySocketID);
@@ -199,15 +198,18 @@ implementation{
                             break;
 
                         case(CONNECTED):    //Received an ack to our data, update window, etc.
-                            dbg(TRANSPORT_CHANNEL,"Got Ack %d\n",storedMsg.nextExp);
-                            mySocket.lastAcked= (mySocket.lastAcked+incomingSize)%SOCKET_BUFFER_SIZE;
-                            call sockets.insert(mySocketID, mySocket);
-                            // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                            // printSocket(mySocketID);
-                            if(mySocket.nextToWrite!=mySocket.nextToSend){
-                                call sendQueue.enqueue(mySocketID);
-                                post sendData();
+                            dbg(TRANSPORT_CHANNEL,"Got Ack %d. Their seq: %d. SeqToRecv: %d\n",incomingMsg.nextExp,incomingMsg.seq,mySocket.seqToRecv);
+                            if(incomingMsg.nextExp>mySocket.seq){
+                                mySocket.lastAcked = (mySocket.lastAcked+incomingSize)%SOCKET_BUFFER_SIZE;
+                                call sockets.insert(mySocketID, mySocket);
+                                // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
+                                // printSocket(mySocketID);
+                                if(mySocket.nextToWrite!=mySocket.nextToSend){
+                                    call sendQueue.enqueue(mySocketID);
+                                    post sendData();
+                                }
                             }
+                            else{dbg(TRANSPORT_CHANNEL,"Duplicate Ack\n");}
                             break;
 
                         case(WAIT_ACKFIN):
@@ -274,8 +276,8 @@ implementation{
                         tcpack ackPack;
 
                         mySocket.state = CONNECTED;
-                        dbg(TRANSPORT_CHANNEL,"Connection Established!\n");
-                        mySocket.seqToRecv = storedMsg.seq+1;
+                        dbg(TRANSPORT_CHANNEL,"Connection Established for socket %d!\n",mySocketID);
+                        mySocket.seqToRecv = incomingMsg.seq+1;
 
                         mySocket.seq++;
                         makeTCPack(&ackPack, 0, 1, 0, 0, mySocket.dest.port, mySocket.srcPort, mySocket.dest.addr, TOS_NODE_ID, 1, mySocket.seq, mySocket.seqToRecv, noData());
@@ -306,11 +308,11 @@ implementation{
                 socket_store_t newSocket;
                 tcpack syncackPack;
 
-                createSocket(&newSocket, SYNC_RCVD, incomingDestPort, incomingSrcPort, storedMsg.src, storedMsg.seq);
+                createSocket(&newSocket, SYNC_RCVD, incomingDestPort, incomingSrcPort, incomingMsg.src, incomingMsg.seq);
 
                 newSocket.seq++;                
                 makeTCPack(&syncackPack, 1, 1, 0, 0, newSocket.srcPort, newSocket.dest.port, newSocket.dest.addr, TOS_NODE_ID, 1, newSocket.seq, newSocket.seqToRecv, noData());
-                call send.send(255, storedMsg.src, PROTOCOL_TCP, (uint8_t*) &syncackPack);
+                call send.send(255, incomingMsg.src, PROTOCOL_TCP, (uint8_t*) &syncackPack);
                 // dbg(TRANSPORT_CHANNEL, "Sent SYNCACK:\n");
                 // logTCpack(&syncackPack, TRANSPORT_CHANNEL);
 
@@ -366,8 +368,11 @@ implementation{
             dbg(TRANSPORT_CHANNEL, "ERROR: cannot make socket with port %d (unused).\n",srcPort);
             return 0;
         }
-
         socketID = getSocketID(dest, destPort, srcPort);
+        if(call sockets.contains(socketID)){
+            dbg(TRANSPORT_CHANNEL,"ERROR: socket %d already exists\n",socketID);
+            return 0;
+        }
 
         createSocket(&newSocket, SYNC_SENT, srcPort, destPort, dest, 0);
 
@@ -383,6 +388,25 @@ implementation{
         return socketID;
     }
 
+
+    task void closeSocket(){
+        socket_store_t socket;
+        tcpack finPack;
+        
+        socket = call sockets.get(IDtoClose);
+        socket.state = WAIT_ACKFIN;
+        socket.seq++;
+        call sockets.insert(IDtoClose, socket);
+
+        makeTCPack(&finPack, 0, 0, 1, 0, socket.dest.port, socket.srcPort, socket.dest.addr, TOS_NODE_ID, 1, socket.seq, socket.seqToRecv, noData());
+        call send.send(255, socket.dest.addr, PROTOCOL_TCP, (uint8_t*) &finPack);
+        dbg(TRANSPORT_CHANNEL, "Sent FIN:\n");
+        logTCpack(&finPack, TRANSPORT_CHANNEL);
+        
+        dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
+        printSocket(IDtoClose);
+    }
+    
     /* == closeConnection ==
         Called when an application wishes to close a connection (and destroy the sockets) between itself and another node.
         Arguments:
@@ -392,29 +416,15 @@ implementation{
         Function:
             If possible, changes the state of the socket to WAIT_ACKFIN, and sends a FIN pack to the destination port via routing.
         Returns FAIL if the socket described by the above params does not exist, SUCCESS otherwise. */
-    command error_t TinyController.closeConnection(uint8_t dest, uint8_t destPort, uint8_t srcPort){
-        uint32_t socketID = getSocketID(dest, destPort, srcPort);
-        socket_store_t socket;
-        tcpack finPack;
+    command error_t TinyController.closeConnection(uint32_t socketID){
         
         if(!call sockets.contains(socketID)){
             dbg(TRANSPORT_CHANNEL, "ERROR: Cannot close socket ID %d (DNE).\n",socketID);
             return FAIL;
         }
 
-        socket = call sockets.get(socketID);
-        
-        socket.state = WAIT_ACKFIN;
-
-        socket.seq++;
-        makeTCPack(&finPack, 0, 0, 1, 0, socket.dest.port, socket.srcPort, socket.dest.addr, TOS_NODE_ID, 1, socket.seq, socket.seqToRecv, noData());
-        call send.send(255, dest, PROTOCOL_TCP, (uint8_t*) &finPack);
-        dbg(TRANSPORT_CHANNEL, "Sent FIN:\n");
-        logTCpack(&finPack, TRANSPORT_CHANNEL);
-        
-        call sockets.insert(socketID, socket);
-        dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-        printSocket(socketID);
+        IDtoClose = socketID;
+        post closeSocket();
 
         return SUCCESS;
     }
@@ -507,6 +517,7 @@ implementation{
     event void send.gotTCP(uint8_t* pkt){
         tcpack* incomingMsg = (tcpack*)pkt;
         memcpy(&storedMsg, incomingMsg, tc_pkt_len);
+        call receiveQueue.enqueue(storedMsg);
         // dbg(TRANSPORT_CHANNEL, "Got TCpack\n");
         // logTCpack(incomingMsg, TRANSPORT_CHANNEL);
         post handlePack();
@@ -533,10 +544,11 @@ implementation{
         printSocket(IDtoClose);
     }
 
+    //need to signal correct socket
     event void sendDelay.fired(){
         //This will eventually signal that data is ready to be sent, but for now I'm testing teardown.
         signal TinyController.connected(call sockets.getIndex(0));//all apps connected to tcp know about all sockets
-        dbg(TRANSPORT_CHANNEL, "Ready to Send Data!\n");
+        dbg(TRANSPORT_CHANNEL, "Ready to Send Data on socket %d!\n",call sockets.getIndex(0));
     }
 
     event void removeDelay.fired(){
@@ -566,7 +578,7 @@ implementation{
         socket->nextExpected = 0; //The next byte we expect will be byte 1!
         socket->seqToRecv = destSeq+1;  //This is the other's sequence number. (0 if we don't know)
 
-        socket->RTT = 1000;
+        socket->RTT = 2000;
     }
 
     void makeTCPack(tcpack* pkt, uint8_t sync, uint8_t ack, uint8_t fin, uint8_t size, uint8_t dPort, uint8_t sPort, uint8_t dest, uint8_t src, uint8_t adWindow, uint16_t seq, uint16_t nextExp, uint8_t* data){
@@ -654,7 +666,14 @@ implementation{
     }
 
     uint32_t getSocketID(uint8_t dest, uint8_t destPort, uint8_t srcPort){
-        return (dest<<4) + (TOS_NODE_ID<<8) + (destPort<<12) + (srcPort<<16);
+        return  (srcPort<<24) + (destPort<<16) + (TOS_NODE_ID<<8) +dest;
+    }
+
+    uint32_t getSID(tcpack msg){
+        uint8_t incomingSrcPort = (msg.ports & 240)>>4;
+        uint8_t incomingDestPort = (msg.ports) & 15;
+        
+        return getSocketID(msg.src, incomingSrcPort, incomingDestPort);        
     }
 
     void makeTimeStamp(timestamp* ts, uint32_t timeout, uint32_t socketID,uint16_t seq, uint8_t byte){
