@@ -19,6 +19,7 @@ implementation{
     task void forward(){
         uint32_t currTime = call t.getNow();
         if(TRUE || currTime<66000 || currTime%31>0){
+            // dbg(TRANSPORT_CHANNEL,"Forwarding %d, %d\n",ws_pkt.src,ws_pkt.dst);
             if(ws_pkt.ttl>0){
                 uint8_t nextHop = call router.getRoute(ws_pkt.dst);
                 call router.printRoutingTable();

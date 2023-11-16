@@ -105,7 +105,7 @@ implementation{
    
    event void CommandHandler.disconnect(uint8_t dest){
       dbg(GENERAL_CHANNEL, "DISCONNECT EVENT\n");
-      call TCP.closeConnection((1<<16) + (1<<12) + (TOS_NODE_ID<<8) + (dest<<4));
+      call TCP.closeConnection((1<<24) + (1<<16) + (TOS_NODE_ID<<8) + dest);
    }
 
    event void CommandHandler.printNeighbors(){}

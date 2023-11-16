@@ -65,7 +65,7 @@ implementation{
                         if(!call routingTable.contains(i) || potentialQuality > (call routingTable.get(i)).quality){          //if found a better way
                             call unexplored.insertPair(i,potentialQuality);                 //add it to the heap to explore from later
 
-                            temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;
+                            temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;         //copy the way we're getting to here
                             temp.quality = potentialQuality;
                             call routingTable.insert(i,temp);                               //update routing table with better path found
                         }

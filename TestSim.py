@@ -167,7 +167,7 @@ def main():
 
     s.loadNoise("no_noise.txt")
     
-    # s.addChannel(s.GENERAL_CHANNEL)
+    s.addChannel(s.GENERAL_CHANNEL)
     # s.addChannel(s.NEIGHBOR_CHANNEL)
     # s.addChannel(s.FLOODING_CHANNEL)
     # s.addChannel(s.ROUTING_CHANNEL)                                                
@@ -177,19 +177,19 @@ def main():
     s.bootAll()
     
     # '''=== TINYCONTROLLER SIM ==='''
-    s.runTime(128)
+    s.runTime(150)
 
     # s.connect(1,2)
 
-    # s.runTime(50)
+    # s.runTime(64)
 
     # s.connect(2,9)
 
-    # s.runTime(50)
+    # s.runTime(64)
 
     # s.disconnect(1,2)
 
-    # s.runTime(500)
+    # s.runTime(64)
 
 
     '''=== DEBUGGING SIM ==='''

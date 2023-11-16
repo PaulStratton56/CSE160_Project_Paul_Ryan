@@ -3,7 +3,7 @@ interface TinyController{
     command uint32_t requestConnection(uint8_t dest, uint8_t destPort, uint8_t srcPort);
     command error_t closeConnection(uint32_t socketID);
     command error_t write(uint32_t socketID, uint8_t* payload, uint8_t length);
-    command uint8_t* read(uint32_t socketID,uint8_t length);
+    command error_t read(uint32_t socketID,uint8_t length,uint8_t* location);
     event void connected(uint32_t socketID);
     event void gotData(uint32_t socketID,uint8_t length);
 }
