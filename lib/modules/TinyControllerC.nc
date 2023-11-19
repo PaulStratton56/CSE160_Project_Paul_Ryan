@@ -23,11 +23,11 @@ implementation{
     components new QueueC(tcpack,32) as receiveQueue;
     TinyControllerP.receiveQueue -> receiveQueue;
 
-    components new QueueC(timestamp,128) as tsQueue;
-    TinyControllerP.tsQueue -> tsQueue;
+    components new QueueC(timestamp,128) as timeQueue;
+    TinyControllerP.timeQueue -> timeQueue;
 
-    components new TimerMilliC() as tsTimer;
-    TinyControllerP.tsTimer -> tsTimer;
+    components new TimerMilliC() as timeoutTimer;
+    TinyControllerP.timeoutTimer -> timeoutTimer;
     
     components new TimerMilliC() as sendDelay;
     TinyControllerP.sendDelay -> sendDelay;
