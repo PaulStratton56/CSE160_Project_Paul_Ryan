@@ -25,7 +25,7 @@ module TinyControllerP{
 implementation{
     tcpack storedMsg;
     uint32_t IDtoClose;//problems
-    int timeoutTime=1000;
+    int timeoutTime;
     uint8_t readDataBuffer[SOCKET_BUFFER_SIZE];
     enum flags{
         EMPTY = 0,
@@ -97,6 +97,7 @@ implementation{
                 //Add a retransmission timestamp for the packet, and call the retransmission timer if not in progress.
                 makeTimeStamp(&ts, 2*socket.RTT, socketID, socket.nextToSend, EMPTY);
                 call timeQueue.enqueue(ts);
+                timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
                 if(!call timeoutTimer.isRunning()){ call timeoutTimer.startOneShot(timeoutTime); }
                 
                 //Update the socket with the new "nextToSend"
@@ -195,6 +196,7 @@ implementation{
             }
         }
         //Restart the timer for timeouts.
+        timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
         call timeoutTimer.startOneShot(timeoutTime);
     }
     
@@ -970,7 +972,10 @@ implementation{
         //Add a timestamp for retransmission.
         makeTimeStamp(&ts, 2*socket.RTT, socketID, socket.nextToSend, intent);
         call timeQueue.enqueue(ts);
-        if(!call timeoutTimer.isRunning()){ call timeoutTimer.startOneShot(timeoutTime); }
+        if(!call timeoutTimer.isRunning()){ 
+            timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
+            call timeoutTimer.startOneShot(timeoutTime); 
+        }
     }
 
     /* == needsRetransmit ==
