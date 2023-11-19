@@ -23,7 +23,7 @@ typedef nx_struct tcpack{
 
 // logNDPack(...): Prints the parameters of a given ndpack to a given channel.
 void logTCpack(tcpack* input, char channel[]){
-	dbg(channel, "SYNC: %d | ACK: %d | FIN: %d | size: %d | cByte: %d | nByte: %d | DPort: %d | SPort: %d | Dest: %d | Src: %d | Window: %d\n",
+	dbg(channel, "INFO (tcPack): SYNC: %d | ACK: %d | FIN: %d | size: %d | cByte: %d | nByte: %d | DPort: %d | SPort: %d | Dest: %d | Src: %d | Window: %d\n",
 	(input->flagsandsize&128)/128,
     (input->flagsandsize&64)/64,
     (input->flagsandsize&32)/32,
