@@ -10,9 +10,9 @@ module TinyControllerP{
     
     uses interface Hashmap<port_t> as ports;
     uses interface Hashmap<socket_store_t> as sockets;
-    uses interface Queue<uint32_t> as sendQueue;
-    uses interface Queue<tcpack> as receiveQueue;
-    uses interface Queue<timestamp> as tsQueue;
+    uses interface Queue<uint32_t> as sendQueue; // Queue to send across multiple sockets
+    uses interface Queue<tcpack> as receiveQueue; // Queue to receive across multiple sockets
+    uses interface Queue<timestamp> as tsQueue; // Queue to retransmit across multiple sockets
 
     uses interface Timer<TMilli> as tsTimer;
     uses interface Timer<TMilli> as sendDelay;
@@ -27,7 +27,6 @@ implementation{
     uint32_t IDtoClose;//problems
     int timeoutTime=400;
     uint8_t readDataBuffer[SOCKET_BUFFER_SIZE];
-    //Function Declarations
     enum flags{
         EMPTY = 0,
         FIN = 1,
@@ -37,6 +36,8 @@ implementation{
         SYNC_FIN = 5,
         SYNC_ACK = 6,
         SYNC_ACK_FIN = 7};
+
+    //Function Declarations
     void createSocket(
         socket_store_t*   socket, 
         // uint8_t           flag, 
@@ -57,290 +58,395 @@ implementation{
     uint32_t getSocketID(uint8_t dest, uint8_t destPort, uint8_t srcPort);
     uint8_t noData();
     void printSocket(uint32_t socketID);
-    task void sendData();//currently not considering advertised window
     void makeTimeStamp(timestamp* ts, uint32_t timeout, uint32_t socketID,uint8_t byte);
     uint32_t getSID(tcpack msg);
+    void printTimeStamp(timestamp* ts);
+    bool isByteinFlight(uint32_t socketID, byteCount_t byte);
 
-    void printTimeStamp(timestamp* ts){
-        dbg(TRANSPORT_CHANNEL,"timestamp | currently: %d | expires: %d, id: %d, byte:%d\n",call tsTimer.getNow(),ts->expiration,ts->id,ts->byte);
+    /* == sendData() ==
+        Checks if this node has a socket that wants to send data.
+        If there is, then it sends the data. That's it. */
+    task void sendData(){
+        uint32_t socketID;
+        socket_store_t socket;
+        uint8_t length;
+        tcpack packet;
+
+        //If a socket wants to send data..
+        if(call sendQueue.size()>0){
+            //Get the socket whose turn it is to send.
+            socketID = call sendQueue.dequeue();
+            socket = call sockets.get(socketID);
+
+            //This needs to change to sliding window, and must consider wraparound
+            if(socket.nextToSend!=socket.nextToWrite){
+                timestamp ts;
+
+                //If what the socket needs to send is too big for one packet, then we can only send the payload size as a max.
+                length = (((byteCount_t)(socket.nextToWrite-socket.nextToSend))>tc_max_pld_len) ? tc_max_pld_len : ((byteCount_t)(socket.nextToWrite-socket.nextToSend));
+                
+                //Make and send the packet.
+                makeTCPack(&packet,0,0,0,length,socketID, ((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE, socket.nextToSend);
+                call send.send(255,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&packet);
+                dbg(TRANSPORT_CHANNEL,"Sent data from byte %d!\n",socket.nextToSend);
+
+                //Update the socket with the new "nextToSend"
+                socket.nextToSend+=length;
+                call sockets.insert(socketID,socket);
+
+                //Add a retransmission timestamp for the packet, and call the retransmission timer if not in progress.
+                makeTimeStamp(&ts,2*socket.RTT,socketID,socket.nextToSend);
+                call tsQueue.enqueue(ts);
+                if(!call tsTimer.isRunning()){ call tsTimer.startOneShot(timeoutTime); }
+            }
+            else{ // There's no outbound data from any socket.
+                dbg(TRANSPORT_CHANNEL,"No data in sendBuffer of socket %d\n",socketID);
+            }
+        }
+        else{
+            dbg(TRANSPORT_CHANNEL,"Nothing in sendQueue\n");
+        }
     }
 
+    /* == checkTimeouts ==
+        Runs through the timeout queue for bytes. 
+        If they haven't been acked and the timeout has expired, then we need to retransmit, so requeue for sending. 
+        Posted when the tsTimer fires. */
     task void checkTimeouts(){
         int i=0;
         int numInFlight = call tsQueue.size();
         uint32_t currentTime = call tsTimer.getNow();
-        // dbg(TRANSPORT_CHANNEL,"Checking %d Timeouts. Current time: %d\n",numInFlight,currentTime);
+
+        //Check all timestamps for a timeout.
         for(i=0;i<numInFlight;i++){
+            //Get a timestamp, and the socket associated with it.
             timestamp ts = call tsQueue.dequeue();
             socket_store_t socket = call sockets.get(ts.id);
-            // printTimeStamp(&ts);
-            if(socket.lastAcked<=socket.nextToSend){//no wrap
-                if(socket.lastAcked<=ts.byte && ts.byte<socket.nextToSend){//if byte not acked yet
+   
+            //If the distance between the last acked byte and the nextToSend byte does not wrap around the buffer,
+            if(socket.lastAcked<=socket.nextToSend){
+                //Check if the first byte of the timestamped packet has NOT been acked yet.
+                if(socket.lastAcked<=ts.byte && ts.byte<socket.nextToSend){
+                    //If the timestamp has timed out and hasn't been acked, retransmit the data.
                     if(currentTime>ts.expiration){
-                        dbg(TRANSPORT_CHANNEL,"Timeout expired. LA:%d, byte: %d, NtS:%d | Resending from byte %d from socket %d\n",socket.lastAcked,ts.byte,socket.nextToSend,ts.byte,ts.id);
-                        socket.nextToSend = ts.byte;//go back n scheme
+                        dbg(TRANSPORT_CHANNEL,"Timeout expired. LA:%d, byte: %d, NTS: %d | Resending from byte %d from socket %d\n",socket.lastAcked,ts.byte,socket.nextToSend,ts.byte,ts.id);
+
+                        //Update the socket with the setback (Go Back N style)
+                        socket.nextToSend = ts.byte;
                         call sockets.insert(ts.id,socket);
+
+                        //Queue the byte for sending again, NOT for the timeout because it hasn't been sent yet.
                         call sendQueue.enqueue(ts.id);
                         post sendData();
-                        //don't requeue cause it expired and we're resending
                     }
-                    else{
-                        //requeue cause it hasn't expired yet and hasn't been acked yet
-                        // dbg(TRANSPORT_CHANNEL,"Waiting for ack for timestamp:\n");
-                        // printTimeStamp(&ts);
+                    else{ //Not acked, but not expired, so keep it in queue.
                         call tsQueue.enqueue(ts);
                     }
                 }
-                // else{dbg(TRANSPORT_CHANNEL,"No Wrap. Already got ack. LA: %d, Byte:%d, NtS:%d\n",socket.lastAcked,ts.byte,socket.nextToSend);}
+                else{ //The byte has been acked. No need to keep the timestamp.
+                    dbg(TRANSPORT_CHANNEL,"No Wrap. Already got ack. LA: %d, Byte:%d, NtS:%d\n",socket.lastAcked,ts.byte,socket.nextToSend);
+                }
             }
-            else{//wrap around
-                if(!(socket.nextToSend<ts.byte && ts.byte<socket.lastAcked)){//byte not inbetween (therefore not acked yet)
+            else{ //The considered window wraps around the buffer.. That's a little trickier
+                //If the byte has NOT been acked yet,
+                if(!(socket.nextToSend<ts.byte && ts.byte<socket.lastAcked)){
+                    //If the timestamp hasn't been acked and has timed out, then retransmit.
                     if(currentTime>ts.expiration){
                         dbg(TRANSPORT_CHANNEL,"Timeout expired. Resending from byte %d from socket %d\n",ts.byte,ts.id);
-                        socket.nextToSend = ts.byte;//go back n scheme
+
+                        //Update the socket with the setback (Go Back N style)
+                        socket.nextToSend = ts.byte;
                         call sockets.insert(ts.id,socket);
+
+                        //Queue the byte for sending again, NOT for the timeout because it hasn't been sent yet.                        
                         call sendQueue.enqueue(ts.id);
                         post sendData();
                     }
-                    else{
-                        // dbg(TRANSPORT_CHANNEL,"Waiting for ack for timestamp:\n");
-                        // printTimeStamp(&ts);
+                    else{ //Not acked, but not expired, so keep it in queue.
                         call tsQueue.enqueue(ts);
                     }
                 }
-                // else{dbg(TRANSPORT_CHANNEL,"Wrap. Already got ack. LA: %d, Byte:%d, NtS:%d\n",socket.lastAcked,ts.byte,socket.nextToSend);}
+                else{ //The byte has been acked. No need to keep the timestamp.
+                    dbg(TRANSPORT_CHANNEL,"Wrap. Already got ack. LA: %d, Byte:%d, NtS:%d\n",socket.lastAcked,ts.byte,socket.nextToSend);
+                }
             }
         }
+        //Restart the timer for timeouts.
         call tsTimer.startOneShot(timeoutTime);
     }
     
-    bool isByteinFlight(uint32_t socketID, byteCount_t byte){
-        int i=0;
-        uint32_t numInFlight = call tsQueue.size();
-        timestamp ts;
-        for(i=0;i<numInFlight;i++){
-            ts = call tsQueue.element(i);
-            if(ts.id==socketID && ts.byte == byte){
-                printTimeStamp(&ts);
-                return TRUE;
-            }
-        }
-        return FALSE;
+    /* == closeSocket ==
+        Begins the teardown procedure by sending a FIN and updating state. 
+        Called when the "clostConnection" command is called. */
+    task void closeSocket(){
+        socket_store_t socket;
+        tcpack finPack;
+        socket = call sockets.get(IDtoClose);
+        
+        //Change socket state.
+        socket.state = WAIT_ACKFIN;
+
+        //Send a FIN request.
+        makeTCPack(&finPack, 0, 0, 1, 0, IDtoClose, 1, noData());
+        call send.send(255, socket.dest.addr, PROTOCOL_TCP, (uint8_t*) &finPack);
+        
+        //Update the socket's sequence.
+        socket.nextToSend++;
+        call sockets.insert(IDtoClose, socket);
     }
-    //The brunt of the work - based on a connection state and flags, do something with the inbound packet.
+
+    /* == handlePack ==
+        The workhorse of this module.
+        Based on a given state and flags of an inbound packet buffered in the receiveQueue, handle a packet accordingly.
+        This includes setup, teardown, and also data transfer. It's a big one!
+        Posted whenever a pack is received. */
     task void handlePack(){
+        //If there's something in the send queue (which there should be if the task was posted)
         if(call receiveQueue.size()>0){
+            //Get the incoming packet.
             tcpack incomingMsg = call receiveQueue.dequeue();
+            //Grab some of the variables from the headers for ease of access later.
             uint8_t incomingFlags = (incomingMsg.flagsandsize & 224)>>5;
             uint8_t incomingSize = incomingMsg.flagsandsize & 31;
             uint8_t incomingSrcPort = ((incomingMsg.ports) & 240)>>4;
             uint8_t incomingDestPort = (incomingMsg.ports) & 15;
-            
             uint32_t mySocketID = getSocketID(incomingMsg.src, incomingSrcPort, incomingDestPort);
-
+            
+            //If the socket this packet is trying to reach already exists,
             if(call sockets.contains(mySocketID)){
+                //Get the requested socket for later.
                 socket_store_t mySocket = call sockets.get(mySocketID);
-                if((byteCount_t)(mySocket.nextExpected - incomingMsg.currbyte) > SOCKET_BUFFER_SIZE && mySocket.state == CONNECTED){//may need to be changed for sliding window
-                    dbg(TRANSPORT_CHANNEL, "Unexpected Byte Order: Expected byte %d, got byte %d. Currently not doing holes. Dropping Packet\n",mySocket.nextExpected, incomingMsg.currbyte);
-                    return;//no holes allowed for now
+
+                //Check to ensure the requested byte falls within a valid range (not a resend, and RIGHT NOW NOT HOLES EITHER)
+                if((byteCount_t)(mySocket.nextExpected - incomingMsg.currbyte) > SOCKET_BUFFER_SIZE && mySocket.state == CONNECTED){
+                    dbg(TRANSPORT_CHANNEL, "Unexpected Byte Order: Expected byte %d, got byte %d. Dropping Packet.\n",mySocket.nextExpected, incomingMsg.currbyte);
+                    return;
                 }
 
+                //Otherwise, check which flags the packet has to handle it accordingly.
                 switch(incomingFlags){
-                    case(EMPTY):
-                        if(mySocket.state==CONNECTED){//got Data (assuming incomingSize>0)
-                            // dbg(TRANSPORT_CHANNEL,"Got Data. IncomingSize:%d\n",incomingSize);
-                            // if(SOCKET_BUFFER_SIZE-((SOCKET_BUFFER_SIZE + (mySocket.nextToRead-mySocket.nextExpected))%SOCKET_BUFFER_SIZE)>=incomingSize){//if room in buffer including wrap around
-                            if(((byteCount_t)(mySocket.nextToRead-mySocket.nextExpected))%SOCKET_BUFFER_SIZE >= incomingSize || mySocket.nextToRead==mySocket.nextExpected){//if room in this packet (no holes)
+                    //SYNC: 0 | ACK: 0 | FIN: 0 (DATA)
+                    case(EMPTY): //Expected states: CONNECTED, for data transfer.
+                        //If connected, then empty flag field implies packet contains data.
+                        if(mySocket.state==CONNECTED){
+                            //If room in buffer for the payload data (no holes),
+                            if(((byteCount_t)(mySocket.nextToRead-mySocket.nextExpected))%SOCKET_BUFFER_SIZE >= incomingSize || mySocket.nextToRead==mySocket.nextExpected){
                                 tcpack acker;
-                                if(incomingMsg.currbyte==mySocket.nextExpected){//doesn't work for holes//if expecting this byte, copy data, update socket vars
-                                    uint8_t recvBufftest[129];
-                                    if(mySocket.nextExpected%SOCKET_BUFFER_SIZE+incomingSize<SOCKET_BUFFER_SIZE){//no wrap around to deal with
-                                        // dbg(TRANSPORT_CHANNEL,"No wrap\n");
+                                //If expecting the byte, copy into memory.
+                                //Does not allow for holes or out of order sequence numbers.
+                                if(incomingMsg.currbyte==mySocket.nextExpected){
+                                    uint8_t printedBuffer[129];
+                                    
+                                    //If copying into the buffer does not require a wraparound, then directly copy.
+                                    if(mySocket.nextExpected%SOCKET_BUFFER_SIZE+incomingSize<SOCKET_BUFFER_SIZE){
                                         memcpy(&(mySocket.recvBuff[mySocket.nextExpected%SOCKET_BUFFER_SIZE]),incomingMsg.data,incomingSize);
                                     }
-                                    else{//buffer wrap around
-                                        uint8_t overflow = mySocket.nextExpected%SOCKET_BUFFER_SIZE+incomingSize-SOCKET_BUFFER_SIZE;//calculate number of overflow bytes
-                                        dbg(TRANSPORT_CHANNEL,"Looping Buffer, NE: %d, size: %d, overflow %d\n",mySocket.nextExpected,incomingSize,overflow);
+                                    else{//Copying requires a buffer wraparound
+                                        //Calculate the remaining bytes that do not fit in the remaining buffer before wrap.
+                                        uint8_t overflow = mySocket.nextExpected%SOCKET_BUFFER_SIZE+incomingSize-SOCKET_BUFFER_SIZE;
+                                        // dbg(TRANSPORT_CHANNEL,"Looping Buffer, NE: %d, size: %d, overflow %d\n",mySocket.nextExpected,incomingSize,overflow);
+
+                                        //Copy the bytes according to the wraparound.
                                         memcpy(&(mySocket.recvBuff[mySocket.nextExpected%SOCKET_BUFFER_SIZE]),incomingMsg.data,incomingSize-overflow);
                                         memcpy(&(mySocket.recvBuff[0]),incomingMsg.data+incomingSize-overflow,overflow);
                                         
-                                        memcpy(&(recvBufftest[0]),&(mySocket.recvBuff[0]),SOCKET_BUFFER_SIZE);
-                                        recvBufftest[128]=0;
-                                        dbg(TRANSPORT_CHANNEL,"\nBuffer:\n|%s|\n",recvBufftest);
+                                        //Print the buffer.
+                                        memcpy(&(printedBuffer[0]),&(mySocket.recvBuff[0]),SOCKET_BUFFER_SIZE);
+                                        printedBuffer[128]=0;
+                                        dbg(TRANSPORT_CHANNEL,"\nBuffer:\n|%s|\n",printedBuffer);
                                     }
-                                    // dbg(TRANSPORT_CHANNEL,"NR:%d, NE:%d, Saved %d bytes to RecvBuff: '%s'\n",mySocket.nextToRead,mySocket.nextExpected,incomingSize,mySocket.recvBuff+mySocket.nextToRead);
 
-                                    mySocket.lastRecv = incomingMsg.currbyte+incomingSize;//might be weird
+                                    //Update socket values.
+                                    //breaks with holes or sliding window.
+                                    mySocket.lastRecv = incomingMsg.currbyte+incomingSize;
                                     mySocket.nextExpected+=incomingSize;
                                 }
-                                else{//if older bytes (already know it isn't newer stuff cause not accepting holes)
+                                else{ //If older bytes (already know it isn't newer stuff cause not accepting holes)
                                     dbg(TRANSPORT_CHANNEL,"Duplicate Data from byte %d\n",incomingMsg.currbyte);
                                 }
+
+                                //Update the socket.
                                 call sockets.insert(mySocketID,mySocket);
-                                // ack duplicate data, cause maybe our previous ack was lost
+
+                                //Send an ACK for the data.
                                 makeTCPack(&acker,0,1,0,0,mySocketID,
-                                    (mySocket.nextToRead-mySocket.nextExpected)%SOCKET_BUFFER_SIZE,//advertised window; negative mod may be problem
+                                    (mySocket.nextToRead-mySocket.nextExpected)%SOCKET_BUFFER_SIZE, //advertised window; negative mod may be problem
                                     noData());
                                 call send.send(255,mySocket.dest.addr,PROTOCOL_TCP,(uint8_t*)&acker);
                                 dbg(TRANSPORT_CHANNEL,"Got Bytes [%d, %d). Expecting Byte %d\n",incomingMsg.currbyte,incomingMsg.currbyte+incomingSize,mySocket.nextExpected);
                                 
-                                //don't incremement NtS because not actually sending data.
-                                // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                                // printSocket(mySocketID);
-                                
+                                //Tell the application that data is ready to receive.
                                 signal TinyController.gotData(mySocketID,mySocket.nextExpected-mySocket.nextToRead);//signal how much contiguous data is ready
                             }
-                            else{
+                            else{ //No room in buffer. Drop packet.
                                 dbg(TRANSPORT_CHANNEL,"No room in recvBuffer. nextToRead: %d, currbyte: %d, room: %d, IS: %d\n",mySocket.nextToRead,mySocket.nextExpected,(SOCKET_BUFFER_SIZE+mySocket.nextToRead - mySocket.nextExpected)%SOCKET_BUFFER_SIZE,incomingSize);
                             }
                         }
-                        else{
-                            dbg(TRANSPORT_CHANNEL,"Unexpected Empty Flags from node %d\n",incomingMsg.src);
+                        else{ //Unexpected state (not connected).
+                            dbg(TRANSPORT_CHANNEL, "ERROR: EMPTY, state = %d\n",mySocket.state);
                         }
                         break;
-                    case(SYNC):
-                        //if new packet, no socket, so wouldn't be here unless crash
-                        //More logic required to detect a crash, etc.
-                        dbg(TRANSPORT_CHANNEL, "SYNC->Crash Detection.\n");
+                    //SYNC: 1 | ACK: 0 | FIN: 0
+                    case(SYNC): //Expected states: No socket. Implies crash or otherwise.
+                        dbg(TRANSPORT_CHANNEL, "ERROR: SYNC, state = %d\n",mySocket.state);
                         break;
-                    case(ACK):
+                    //SYNC: 0 | ACK: 1 | FIN: 0
+                    case(ACK): //Expected states: SYNC_RCVD, CONNECTED, CLOSED, WAIT_ACKFIN, WAIT_ACK
                         switch(mySocket.state){
+                            //If SYNC_RCVD, then SYNC_ACK has been ACKed. Move to connected and prepare for data.
                             case(SYNC_RCVD):
-                                //Signal that data is probably inbound!
+                                //Update socket state.
                                 mySocket.state = CONNECTED;
-                                dbg(TRANSPORT_CHANNEL,"Connection Established for socket %d! nByte:%d\n",mySocketID,mySocket.nextExpected);
-                                mySocket.nextExpected++;//part of handshake, need to increment expected byte
+                                mySocket.nextExpected++;
                                 mySocket.nextToWrite = mySocket.nextToSend;
                                 mySocket.nextToRead = mySocket.nextExpected;
                                 call sockets.insert(mySocketID, mySocket);
-                                // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                                // printSocket(mySocketID);
-                                signal TinyController.connected(mySocketID);//all apps connected to tcp know about all sockets
-                                break;
+                                dbg(TRANSPORT_CHANNEL,"Connection Established for socket %d! nByte:%d\n",mySocketID,mySocket.nextExpected);
 
-                            case(CONNECTED):    //Received an ack to our data, update lastAcked, window, etc.
-                                dbg(TRANSPORT_CHANNEL,"Got Ack. %d is expecting byte %d. My next byte is %d. Last Acked: %d\n",incomingMsg.src,incomingMsg.nextbyte,mySocket.nextToSend, mySocket.lastAcked);
+                                //Signal that data is inbound.
+                                signal TinyController.connected(mySocketID);
+                                break;
+                            //If connected, then could be ACKing data. Must update window.
+                            case(CONNECTED):
+                                // dbg(TRANSPORT_CHANNEL,"Got Ack. %d is expecting byte %d. My next byte is %d. Last Acked: %d\n",incomingMsg.src,incomingMsg.nextbyte,mySocket.nextToSend, mySocket.lastAcked);
+                                
+                                //Previous wraparound code. Analyze if needed.
                                 // if(((byteCount_t)(mySocket.nextToSend-mySocket.lastAcked)<SOCKET_BUFFER_SIZE && (byteCount_t)(incomingMsg.nextbyte-mySocket.lastAcked)<SOCKET_BUFFER_SIZE) //no wrap
                                 // || ((byteCount_t)(mySocket.nextToSend-mySocket.lastAcked)>SOCKET_BUFFER_SIZE && (byteCount_t)(incomingMsg.nextbyte-mySocket.lastAcked)>SOCKET_BUFFER_SIZE)){//wrap
+                                
+                                //If the ACK is acking previously unACKed data, update the socket.
                                 if((byteCount_t)(incomingMsg.nextbyte - mySocket.lastAcked) < SOCKET_BUFFER_SIZE){//if acking more stuff
-                                    //they have acknowledged more data
-                                    // if((byteCount_t)(incomingMsg.nextbyte - mySocket.lastAcked) < SOCKET_BUFFER_SIZE){//if acking more stuffd
-                                        mySocket.lastAcked = incomingMsg.nextbyte;
-                                    // }
+                                    //Update the socket.
+                                    mySocket.lastAcked = incomingMsg.nextbyte;
                                     call sockets.insert(mySocketID, mySocket);
-                                    // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                                    // printSocket(mySocketID);
-                                    if(mySocket.nextToWrite!=mySocket.nextToSend && !isByteinFlight(mySocketID,incomingMsg.nextbyte)){//breaks for sliding window
-                                        // dbg(TRANSPORT_CHANNEL,"More data to send\n");
+
+                                    //STOP&WAIT: Enqueue more data only if we updated our lastAcked (meaning the packet is out of flight).
+                                    //If we have more data to send, and there isn't data in flight, then send the next piece!
+                                    if(mySocket.nextToWrite!=mySocket.nextToSend && !isByteinFlight(mySocketID,incomingMsg.nextbyte)){
+                                        //Queue the data to send.
                                         call sendQueue.enqueue(mySocketID);
                                         post sendData();
                                     }
                                 }
-                                else{
-                                    if(mySocket.nextToSend!=mySocket.lastAcked){//if == then empty buffer, if != then difference == buff size so full
-                                        dbg(TRANSPORT_CHANNEL,"SendBuff for socket %d is full\n", mySocketID);
-                                    }
-                                    else{
-                                        dbg(TRANSPORT_CHANNEL,"I already know they got these bytes!\n");
-                                    }
+                                else{ //Ack is for previous data.
+                                    dbg(TRANSPORT_CHANNEL,"Node %d Expecting %d. Already acked up to %d.\n", incomingMsg.src, incomingMsg.nextbyte, mySocket.lastAcked);
                                 }
                                 break;
-
-                            case(WAIT_ACKFIN):
+                            
+                            //If the other host does not receive our ACK, then they will not close. This is a problem, because this socket is removed.
+                            //  Must change such that the client responds only with an ACK if both FIN and ACK are received.
+                            //If we've closed and responded to their FIN with an ACK, then the ACK gives us permission to close.
+                            case(CLOSED):
+                                //Remove the socket.
+                                call sockets.remove(mySocketID);
+                                dbg(TRANSPORT_CHANNEL, "Final Ack received. Removing socket %d. | %d Remaining sockets\n",mySocketID,call sockets.size());
+                                break;
+                            //If waiting for an ACK and a FIN before closing, update to only wait for a FIN.
+                            case(WAIT_ACKFIN): 
+                                //Update socket state.
                                 mySocket.state = WAIT_FIN;
                                 mySocket.nextExpected++;
                                 call sockets.insert(mySocketID, mySocket);
-                                // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                                // printSocket(mySocketID);
                                 break;
-                            
-                            case(CLOSED):
-                                call sockets.remove(mySocketID);
-                                dbg(TRANSPORT_CHANNEL, "Final Ack received. Removing socket %d. | %d Remaining sockets\n",mySocketID,call sockets.size());
-                                // dbg(TRANSPORT_CHANNEL,"Timestamps left:%d\n",call tsQueue.size());
-                                // {
-                                // timestamp ts = call tsQueue.head();
-                                // printTimeStamp(&ts);
-                                // }
-                                break;
-                            
+                            //Static memory "IDtoClose" causes issues. Implement a queue.
+                            //If only waiting for an ACK, begin socket removal process.
+                            //Change this such that it sends an ACK now that it has seen both a FIN and ACK.
                             case(WAIT_ACK):
+                                //Update socket state.
                                 mySocket.state = WAIT_FINAL;
-
+                                mySocket.nextExpected++;
                                 call sockets.insert(mySocketID, mySocket);
-                                // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                                // printSocket(mySocketID);
 
-                                IDtoClose = mySocketID;//fix this
+                                IDtoClose = mySocketID;
                                 call removeDelay.startOneShot(2*mySocket.RTT);
                                 break;
-
+                            //Unexpected state, therefore unknown behavior. Drop packet.
                             default:
-                                dbg(TRANSPORT_CHANNEL, "Unexpected ACK.\n");
+                                dbg(TRANSPORT_CHANNEL, "ERROR: ACK, state = %d\n",mySocket.state);
                                 break;
                         }
                         break;
-                    case(FIN):
-                        if(mySocket.state == CONNECTED){
-                            //signal closing, then get told we're closed. For now we do this via a timer.
-                            IDtoClose = mySocketID;
-                            call closeDelay.startOneShot(mySocket.RTT);
-                            mySocket.state = CLOSING;
+                    //SYNC: 0 | ACK: 0 | FIN: 1
+                    case(FIN): //Expected states: CONNECTED, WAIT_ACKFIN, or WAIT_FIN. Otherwise, unknown behavior.
+                        //Based on state of a packet, respond to FIN.
+                        //No matter what, an ACK will be sent after updating state.
+                        switch(mySocket.state){
+                            //If connected, tell app to close and respond via an ack.
+                            //For now, this "signal" is done by a dummy timer that responds after a certain period of time to represent the app has closed.
+                            case(CONNECTED):
+                                IDtoClose = mySocketID;
+                                mySocket.state = CLOSING;
+
+                                call closeDelay.startOneShot(mySocket.RTT);
+                                break;
+                            //If waiting for an ACK and a FIN before closing, update to only wait for an ACK.
+                            //DO NOT send an ACK for this. Only send when both FIN and ACK are received.
+                            case(WAIT_ACKFIN):
+                                mySocket.state = WAIT_ACK;
+                                break;
+                            //Static memory "IDtoClose" causes issues. Implement a queue.
+                            //If waiting only for FIN, begin socket removal process.
+                            case(WAIT_FIN):
+                                mySocket.state = WAIT_FINAL;
+
+                                IDtoClose = mySocketID;
+                                call removeDelay.startOneShot(2*mySocket.RTT);
+                                break;
+                            //Unexpected state, therefore unknown behavior. Drop packet by returning.
+                            default:
+                                dbg(TRANSPORT_CHANNEL, "ERROR: FIN, state = %d\n",mySocket.state);
+                                return;
                         }
-                        else if(mySocket.state == WAIT_ACKFIN){
-                            mySocket.state = WAIT_ACK;
-                        }
-                        else if(mySocket.state == WAIT_FIN){
-                            mySocket.state = WAIT_FINAL;
-                            IDtoClose = mySocketID;
-                            call removeDelay.startOneShot(2*mySocket.RTT);
-                        }
+                        //Update the last Acked byte.
                         mySocket.lastAcked = incomingMsg.nextbyte;
                         
-                        { // NOW ENTERING: THE ACK SCOPE
-                            tcpack ackPack;
-                            // dbg(TRANSPORT_CHANNEL,"1\n");
-                            mySocket.nextExpected++;
-                            call sockets.insert(mySocketID, mySocket);
-                            // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                            // printSocket(mySocketID);
+                        { //Now, send an ACK to respond to the FIN.
+                        tcpack ackPack;
+                        
+                        //Update the socket's expected sequence.
+                        mySocket.nextExpected++;
+                        call sockets.insert(mySocketID, mySocket);
 
-                            makeTCPack(&ackPack, 0, 1, 0, 0, mySocketID, 1, noData());
-                            call send.send(255, mySocket.dest.addr, PROTOCOL_TCP, (uint8_t*) &ackPack);
-                            // dbg(TRANSPORT_CHANNEL, "Sent ACK:\n");
-                            // logTCpack(&ackPack, TRANSPORT_CHANNEL);
-                            mySocket.nextToSend++;
-                            call sockets.insert(mySocketID,mySocket);
+                        //Send the ACK.
+                        makeTCPack(&ackPack, 0, 1, 0, 0, mySocketID, 1, noData());
+                        call send.send(255, mySocket.dest.addr, PROTOCOL_TCP, (uint8_t*) &ackPack);
+                        
+                        //Update the socket's sequence.
+                        mySocket.nextToSend++;
+                        call sockets.insert(mySocketID,mySocket);
                         }
                         break;
-
-                    case(SYNC_ACK):
+                    //SYNC: 1 | ACK: 1 | FIN: 0
+                    case(SYNC_ACK): //Expect to be in SYNC_SENT state, otherwise unknown behavior.
+                        //Response for our SYNC, update and respond with ACK
                         if(mySocket.state == SYNC_SENT){
                             tcpack ackPack;
+
+                            //Update socket state. Previously unknown seq can be established.
                             mySocket.state = CONNECTED;
                             mySocket.nextExpected = incomingMsg.currbyte+1;
-
                             dbg(TRANSPORT_CHANNEL,"Connection Established for socket %d!\n",mySocketID);
+
+                            //Send an ACK in response.
                             makeTCPack(&ackPack, 0, 1, 0, 0, mySocketID, 1, noData());
                             call send.send(255, mySocket.dest.addr, PROTOCOL_TCP, (uint8_t*) &ackPack);
-                            // dbg(TRANSPORT_CHANNEL, "Sent ACK:\n");
-                            // logTCpack(&ackPack, TRANSPORT_CHANNEL);
-                            // dbg(TRANSPORT_CHANNEL,"2\n");
-                            mySocket.nextToSend++;//in set up need to increment even though no data
-                            // mySocket.nextExpected++;//why or why not
-                            call sockets.insert(mySocketID, mySocket);
-                            // dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-                            // printSocket(mySocketID);
 
+                            //Update socket state to reflect the sent packet.
+                            mySocket.nextToSend++;
+                            call sockets.insert(mySocketID, mySocket);
+
+                            //Prepare to send data.
                             call sendDelay.startOneShot(mySocket.RTT);
                         }
-                        else{
-                            dbg(TRANSPORT_CHANNEL, "Unexpected SYNC_ACK. Dropping.\n");
+                        else{ //unknown behavior
+                            dbg(TRANSPORT_CHANNEL, "ERROR: SYNC_ACK, state = %d\n",mySocket.state);
                         }
                         break;
-                    case(ACK_FIN):
+                    //SYNC: 0 | ACK: 1 | FIN: 1
+                    case(ACK_FIN): //Unimplemented as of now, instantaneous app close not possible.
                         dbg(TRANSPORT_CHANNEL, "ACK_FIN received.\n");
                         break;
+                    //Unknown Case.
                     default:
                         dbg(TRANSPORT_CHANNEL, "ERROR: unknown flag combo: %d. Dropping.\n", incomingFlags);
                         break;
@@ -435,25 +541,6 @@ implementation{
         printSocket(socketID);
         return socketID;
     }
-
-    task void closeSocket(){
-        socket_store_t socket;
-        tcpack finPack;
-        
-        socket = call sockets.get(IDtoClose);
-        socket.state = WAIT_ACKFIN;
-
-        makeTCPack(&finPack, 0, 0, 1, 0, IDtoClose, 1, noData());
-        call send.send(255, socket.dest.addr, PROTOCOL_TCP, (uint8_t*) &finPack);
-        dbg(TRANSPORT_CHANNEL, "Sent FIN:\n");
-        logTCpack(&finPack, TRANSPORT_CHANNEL);
-        // dbg(TRANSPORT_CHANNEL,"5\n");        
-        socket.nextToSend++;//in teardown need to increment even though no data
-        // socket.nextExpected++;
-        call sockets.insert(IDtoClose, socket);
-        dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-        printSocket(IDtoClose);
-    }
     
     /* == closeConnection ==
         Called when an application wishes to close a connection (and destroy the sockets) between itself and another node.
@@ -477,197 +564,228 @@ implementation{
         return SUCCESS;
     }
 
-    task void sendData(){//currently not considering advertised window
-        uint32_t socketID;
-        socket_store_t socket;
-        uint8_t length;
-        tcpack packet;
-        if(call sendQueue.size()>0){
-            socketID = call sendQueue.dequeue();
-            socket = call sockets.get(socketID);
-            if(socket.nextToSend!=socket.nextToWrite){//need to switch to window based, needs wraparound
-                timestamp ts;
-                length = (((byteCount_t)(socket.nextToWrite-socket.nextToSend))>tc_max_pld_len) ? tc_max_pld_len : ((byteCount_t)(socket.nextToWrite-socket.nextToSend));
-                // solution here... no wraparound in reading buffer when making Tcp pack!
-                // also change maketcp pack so it takes socketid and handles everything itself
-                makeTCPack(&packet,0,0,0,length,socketID,
-                            ((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE,
-                            socket.nextToSend);
-                // logTCpack(&packet,TRANSPORT_CHANNEL);
-                call send.send(255,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&packet);
-                dbg(TRANSPORT_CHANNEL,"Sent data from byte %d!\n",socket.nextToSend);
-                makeTimeStamp(&ts,2*socket.RTT,socketID,socket.nextToSend);
-                socket.nextToSend+=length;
-                call sockets.insert(socketID,socket);
-                call tsQueue.enqueue(ts);
-                // dbg(TRANSPORT_CHANNEL,"timestamps left: %d\n",call tsQueue.size());
-                // printTimeStamp(&ts);
-                if(!call tsTimer.isRunning()){
-                    call tsTimer.startOneShot(timeoutTime);
-                }
-            }
-            else{
-                dbg(TRANSPORT_CHANNEL,"No data in sendBuffer of socket %d\n",socketID);
-            }
-        }
-        else{
-            dbg(TRANSPORT_CHANNEL,"Nothing in sendQueue\n");
-        }
-    }
-
-    //may cause seg faults, double check exact byte math!
+    /* == write ==
+        Writes a given payload to a socket's sendBuffer, after checking for certain edge cases.
+        (Does the socket exist, is there room in the buffer to write this, etc.)
+        Called when an application with an existing connection has permission to write to a socket and wishes to do so. */
     command error_t TinyController.write(uint32_t socketID, uint8_t* payload, uint8_t length){
         socket_store_t socket;
+        //Check to see if the socket exists
         if(call sockets.contains(socketID)){
+            //If it does, retrieve it for later use.
             socket = call sockets.get(socketID);
+            //If the socket is connected and ready to send data,
             if(socket.state == CONNECTED){
+                //If there is room in the buffer to write the whole payload to (or the buffer is empty), then it is possible to write.
                 if(((byteCount_t)(socket.lastAcked-socket.nextToWrite))%SOCKET_BUFFER_SIZE>=length || socket.lastAcked==socket.nextToWrite){
-                    uint8_t sendBufftest[129];
+                    //If the memory written to does not include a wraparound, write directly.
                     if(socket.nextToWrite%SOCKET_BUFFER_SIZE+length<SOCKET_BUFFER_SIZE){
                         memcpy(&(socket.sendBuff[socket.nextToWrite%SOCKET_BUFFER_SIZE]),payload,length);
                     }
-                    else{//buffer wrap around
+                    else{//Writing requires a wraparound
+                        //Consider the excess bytes that must be wrapped back to the beginning, then write at the end and start.
                         uint8_t overflow = socket.nextToWrite%SOCKET_BUFFER_SIZE+length-SOCKET_BUFFER_SIZE;
                         memcpy(&(socket.sendBuff[socket.nextToWrite%SOCKET_BUFFER_SIZE]),payload,length-overflow);
                         memcpy(&(socket.sendBuff[0]),payload+length-overflow,overflow);
                     }
-                    memcpy(&(sendBufftest[0]),&(socket.sendBuff[0]),SOCKET_BUFFER_SIZE);
-                    sendBufftest[128]=0;
-                    dbg(TRANSPORT_CHANNEL,"Wrote data to buffer!\nBuffer:\n|%s|\n",sendBufftest);
+                    //Update the socket pointers with this new information.
                     socket.nextToWrite+=length;
                     call sockets.insert(socketID,socket);
+
+                    //Enqueue this new data for sending.
                     call sendQueue.enqueue(socketID);
                     post sendData();
+
+                    { //Print the result of writing.
+                    uint8_t printedBuffer[129];
+                    memcpy(&(printedBuffer[0]),&(socket.sendBuff[0]),SOCKET_BUFFER_SIZE);
+                    printedBuffer[128]=0;
+                    dbg(TRANSPORT_CHANNEL,"WRITE: Socket %d | Buffer:\n|%s|\n", socketID, printedBuffer);
+                    }
+
                     return SUCCESS;
                 }
-                else{
-                    dbg(TRANSPORT_CHANNEL,"Can't Write. Not enough room in sendbuffer. lastAcked: %d, nextToWrite: %d, room: %d, length: %d\n",socket.lastAcked,socket.nextToWrite,((byteCount_t)(socket.lastAcked-socket.nextToWrite))%SOCKET_BUFFER_SIZE,length);
+                else{ //Not enough room in the current buffer to write the payload to.
+                    dbg(TRANSPORT_CHANNEL,"ERROR: Not enough room in sendBuffer. INFO: lastAcked: %d | nextToWrite: %d | room: %d | length: %d\n",socket.lastAcked,socket.nextToWrite,((byteCount_t)(socket.lastAcked-socket.nextToWrite))%SOCKET_BUFFER_SIZE,length);
                     return FAIL;
                 }
             }
-            else{
-                dbg(TRANSPORT_CHANNEL,"Socket %d in state %d, not CONNECTED state\n",socketID,socket.state);
+            else{ //Socket is not connected, and therefore cannot send.
+                dbg(TRANSPORT_CHANNEL,"ERROR: Socket %d not connected.\n",socketID,socket.state);
                 return FAIL;
             }
         }
-        else{
-            dbg(TRANSPORT_CHANNEL,"Socket %d doesn't exist\n",socketID);
+        else{ //Socket was not found under the given socketID
+            dbg(TRANSPORT_CHANNEL,"ERROR: No Socket %d.\n",socketID);
             return FAIL;
         }
 
     }
 
-    command error_t TinyController.read(uint32_t socketID,uint8_t length,uint8_t* location){
+    /* == read ==
+        Copies a given amount of data from the recvBuffer of a given socket to another location in memory for an application to read.
+        Must check several things, including if the read data wraps around the buffer, etc.
+        Called when an application with a preexisting connection wants to read from its socket.*/
+    command error_t TinyController.read(uint32_t socketID, uint8_t length, uint8_t* location){
+        //Check that the socket exists.
         if(call sockets.contains(socketID)){
+            //If the socket exists, store it for later use.
             socket_store_t readSocket = call sockets.get(socketID);
-            uint8_t recvBufftest[129];
-            memcpy(&(recvBufftest[0]),&(readSocket.recvBuff[0]),SOCKET_BUFFER_SIZE);
-            recvBufftest[128]=0;
-            dbg(TRANSPORT_CHANNEL,"About to read from recvBuffer!\nBuffer:\n|%s|\n",recvBufftest);
-            // memset(location,0,SOCKET_BUFFER_SIZE);//don't think tc should be responsible for 0ing out the output space
-            if(readSocket.nextToRead%SOCKET_BUFFER_SIZE+length<SOCKET_BUFFER_SIZE){//check if portion to be read requires wraparound handling
+            //Print the currently stored data.
+            uint8_t printedBuffer[129];
+            memcpy(&(printedBuffer[0]),&(readSocket.recvBuff[0]),SOCKET_BUFFER_SIZE);
+            printedBuffer[128]=0;
+            dbg(TRANSPORT_CHANNEL,"READ: Socket %d | recvBuffer:\n|%s|\n", socketID, printedBuffer);
+            //If the portion of memory to be read does not require a wraparound in the recbBuffer of the socket, copy directly.
+            if(readSocket.nextToRead%SOCKET_BUFFER_SIZE+length<SOCKET_BUFFER_SIZE){
                 memcpy(location,&(readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]),length);
             }
-            else{//buffer wrap around
-                uint8_t overflow = readSocket.nextToRead%SOCKET_BUFFER_SIZE+length-SOCKET_BUFFER_SIZE;//calculate how many bytes are wrapped around
-                memcpy(location,&(readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]),length-overflow);//copy till end of buffer
-                memcpy(location+length-overflow,&(readSocket.recvBuff[0]),overflow);//copy wrap around stuff
+            else{//Otherwise, a wraparound is required
+                //Consider the excess bytes that are stored at the beginning, then write the end and start to the destination memory location.
+                uint8_t overflow = readSocket.nextToRead%SOCKET_BUFFER_SIZE+length-SOCKET_BUFFER_SIZE;
+                memcpy(location,&(readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]),length-overflow);
+                memcpy(location+length-overflow,&(readSocket.recvBuff[0]),overflow);
             }
+            //Update the socket's pointers to reflect this read action.
             readSocket.nextToRead+=length;
             call sockets.insert(socketID,readSocket);
             return SUCCESS;
         }
-        else{
-            dbg(TRANSPORT_CHANNEL,"Can't Read from nonexistent Socket %d\n",socketID);
+        else{ //Socket does not exist.
+            dbg(TRANSPORT_CHANNEL,"ERROR: No Socket %d.\n",socketID);
             return FAIL;
         }
     }
 
+    /* == gotTCP ==
+        Signaled when Waysender receives a packet marked with a TCP protocol.
+        Copies the pack into memory and queues it for handling. */
     event void send.gotTCP(uint8_t* pkt){
+        //Copy the incoming packet into memory.
         memcpy(&storedMsg, (tcpack*)pkt, tc_pkt_len);
+        //Post the handling task.
         call receiveQueue.enqueue(storedMsg);
         post handlePack();
-        // dbg(TRANSPORT_CHANNEL, "Got TCpack\n");
-        // logTCpack((tcpack*)pkt, TRANSPORT_CHANNEL);
     }
 
+    /* == tsTimer.fired ==
+        Called when the tsTimer expires.
+        This timer is used to check for timeouts of in-flight packets.
+        It does this by posting the checkTimeouts task, which recursively calls this timer. */
     event void tsTimer.fired(){
         post checkTimeouts();
     }
 
-    event void closeDelay.fired(){//need to change advertised window
+    /* == closeDelay.fired ==
+        Called when the closeDelay timer is fired.
+        This timer is a dummy timer, used to represent an application signaling that it is finished with a connection.
+        It is called right now upon receiving a FIN packet when in the CONNECTED state. */
+    event void closeDelay.fired(){
         tcpack finPack;
+        //Get the ID of the socket to close. This should be done on a queue of IDtoCloses, not just a static one.
         socket_store_t mySocket = call sockets.get(IDtoClose);
 
-        mySocket.state = CLOSED;
-
+        //Create and send a FIN message to the other end of the connection.
         makeTCPack(&finPack, 0, 0, 1, 0, IDtoClose, 1, noData());
         call send.send(255, mySocket.dest.addr, PROTOCOL_TCP, (uint8_t*) &finPack);
-        dbg(TRANSPORT_CHANNEL, "Sent FIN:\n");
-        logTCpack(&finPack, TRANSPORT_CHANNEL);
-        // dbg(TRANSPORT_CHANNEL,"6\n");
+        // dbg(TRANSPORT_CHANNEL, "Sent FIN:\n");
+        // logTCpack(&finPack, TRANSPORT_CHANNEL);
+
+        //Update the socket's information. 
+        //This might include the advertised window later on.
+        mySocket.state = CLOSED;
         mySocket.nextToSend++;
         call sockets.insert(IDtoClose, mySocket);
-        dbg(TRANSPORT_CHANNEL, "Updated Socket:\n");
-        printSocket(IDtoClose);
     }
 
-    //need to signal correct socket
+    /* == sendDelay.fired ==
+        called when the sendDelay timer is fired.
+        This timer represents the delay necessary after sending an ACK to a SYNC_ACK before sending data.
+        Once this timer fires, variables are updated and a signal that the socket is ready is sent to all applications.
+        This obviously has security concerns. */
     event void sendDelay.fired(){
-        //This will eventually signal that data is ready to be sent, but for now I'm testing teardown.
-        uint32_t socketID = call sockets.getIndex(0);//wrong!!
+        //As of right now, only the first socket sends data for a given simulation. 
+        //A queue for sockets to signal they are ready to send must be implemented.
+        uint32_t socketID = call sockets.getIndex(0);
+
+        //Get and update the socket so it is ready to send data.
         socket_store_t socket = call sockets.get(socketID);
         socket.nextToWrite = socket.nextToSend;
         socket.nextToRead = socket.nextExpected;
         call sockets.insert(socketID,socket);
-        signal TinyController.connected(socketID);//all apps connected to tcp know about all sockets
+
+        //Signal the connection is ready to use.
+        signal TinyController.connected(socketID);
         
         dbg(TRANSPORT_CHANNEL, "Ready to Send Data on socket %d!\n",socketID);
     }
 
+    /* == removeDelay.fired ==
+        Called when the removeDelay timer fires.
+        This timer is called when a client connection enters a WAIT_FINAL state.
+        After this timer fires, the connection is assumed to be mutually closed, and the socket is removed from the client. */
     event void removeDelay.fired(){
+        //As of right now, this is done via a static "IDtoClose" variable. This should be changed to a queue of sockets to close.
         call sockets.remove(IDtoClose);
-        dbg(TRANSPORT_CHANNEL, "Initiated Fin. %d agreed. Removing socket %d. | %d Remaining sockets\n",IDtoClose & 255,IDtoClose,call sockets.size());
-        // dbg(TRANSPORT_CHANNEL,"Timestamps left:%d\n",call tsQueue.size());
-        // {
-        // timestamp ts = call tsQueue.head();
-        // printTimeStamp(&ts);
-        // }
-
+        dbg(TRANSPORT_CHANNEL, "REMOVING SOCKET: %d.\n", IDtoClose);
     }
 
+    /* == createSocket ==
+        Called when socket creation is necessary, and a socket does not already exist.
+        Initializes and adds a socket to the sockets hash with given parameters.
+        Note: buffers are initialized to all '*' characters. */
     void createSocket(socket_store_t* socket, uint8_t state, socket_port_t srcPort, socket_port_t destPort, uint8_t dest, uint8_t theirByte){
+        //Create the socket.
         socket_addr_t newDest;
+
+        //Fill out the destination.
         newDest.port = destPort;
         newDest.addr = dest;
         
+        //Unused socket "flag" parameter.
         // socket->flag = flag;
+
+        //Fill out the state, source and destination.
         socket->state = state;
         socket->srcPort = srcPort;
         socket->dest = newDest;
 
+        //Fill out the sending portion of the socket.
         memset(socket->sendBuff,42,SOCKET_BUFFER_SIZE);//42 is *
         socket->nextToWrite = call Random.rand16();//Randomize sequence number 0, 255
         socket->lastAcked = socket->nextToWrite-1; //Nothing has been acknowledged because nothing's sent, it's new!
         socket->nextToSend = socket->nextToWrite; //Nothing has been sent, it's new!
 
+        //Fill out the receiving portion of the socket.
         memset(socket->recvBuff,42,SOCKET_BUFFER_SIZE);//42 is *
         socket->nextToRead = theirByte; //We may know their current byte they sent
         socket->nextExpected = theirByte+1; //The next byte will start as 1 more than their current byte!
         socket->lastRecv = theirByte; //This is the first time we've gotten something, let it have ID 0.
 
+        //Arbitrary RTT, should be dynamic.
         socket->RTT = 2000;
 
-        call sockets.insert(getSocketID(dest,destPort,srcPort),*socket);
+        //Insert this new socket into the hash.
+        call sockets.insert(getSocketID(dest,destPort,srcPort),*socket); 
     }
 
+    /* == makeTCPack ==
+        Yet another makePack function, adding TC headers to a given payload.
+        sync, ack, and fin are all 1 or 0, representing the flags.
+        size is the payload size.
+        socketID gives the pack information about the socket.
+        adWindow is the advertised window field of a node's recvBuffer.
+        byteIndex is the byte that */
     void makeTCPack(tcpack* pkt, uint8_t sync, uint8_t ack, uint8_t fin, uint8_t size, uint32_t socketID, uint8_t adWindow, uint8_t byteIndex){
+
+        //Get the socket, and initialize the fields that go in the "flagsandsize" and "ports" fields of a TCPack.
         // memset(pkt,0,tc_pkt_len);
         uint8_t flagField = 0;
         uint8_t portField = 0;
         socket_store_t socket = call sockets.get(socketID);
-        if(!call sockets.contains(socketID))dbg(TRANSPORT_CHANNEL,"Socket doesn't exist yet %d\n",socketID);
+        if(!call sockets.contains(socketID)) dbg(TRANSPORT_CHANNEL,"WARNING: Makepack cannot find socket %d.\n",socketID);
 
+        //Fill out the flags and size field.
         //(left->right): 0000 0000
         //SYNC,ACK,FIN,size[5]
         flagField += sync<<7;
@@ -676,6 +794,7 @@ implementation{
         flagField += (size & 31);
         pkt->flagsandsize = flagField;
         
+        //Fill out the destination and source information.
         //(left->right): 0000 0000
         //destPort, srcPort
         portField += socket.dest.port<<4;
@@ -683,23 +802,31 @@ implementation{
         pkt->ports = portField;
         pkt->src = TOS_NODE_ID;
         pkt->dest = socket.dest.addr;
+
+        //Fill out relevant buffer information.
         pkt->currbyte = socket.nextToSend;
         pkt->nextbyte = socket.nextExpected;
         pkt->adWindow = adWindow;
      
+        //Copy the payload into the packet.
         memset(pkt->data,0,tc_max_pld_len);
+        //If there is data to send (size == 0 implies no data to send),
         if(size>0){
-            if(byteIndex%SOCKET_BUFFER_SIZE+size<SOCKET_BUFFER_SIZE){//no wrap
+            //If the memory to be copied into the payload does not require a wraparound, copy directly into the payload.
+            if(byteIndex%SOCKET_BUFFER_SIZE+size<SOCKET_BUFFER_SIZE){
                 memcpy(pkt->data, &(socket.sendBuff[byteIndex%SOCKET_BUFFER_SIZE]), size);
             }
-            else{
+            else{ //Otherwise, a wraparound is required
+                //Consider the excess bytes that are stored at the beginning, then write the end and start into the payload.
                 uint8_t overflow = byteIndex%SOCKET_BUFFER_SIZE+size-SOCKET_BUFFER_SIZE;
                 memcpy(pkt->data,&(socket.sendBuff[byteIndex%SOCKET_BUFFER_SIZE]),size-overflow);
                 memcpy(pkt->data+size-overflow,&(socket.sendBuff[0]),overflow);
             }
-        }
+        } 
     }
 
+    /* == printSocket ==
+        Debugging function to print the state of a socket, given a socketID. */
     void printSocket(uint32_t socketID){
         if(!call sockets.contains(socketID)){
             dbg(TRANSPORT_CHANNEL, "ERROR: No socket with ID %d exists.\n",socketID);
@@ -707,6 +834,7 @@ implementation{
         else{
             socket_store_t printedSocket = call sockets.get(socketID);
             char* printedState;
+            //This translated given state codes into the names of each code.
             switch(printedSocket.state){
                 case(LISTEN):
                     printedState = "LISTEN";
@@ -741,7 +869,7 @@ implementation{
                 default:
                     dbg(TRANSPORT_CHANNEL, "Unknown state.\n");
             }
-            dbg(TRANSPORT_CHANNEL, "PRINTING SOCKET: ID: %d | State: %s | srcPort: %d | destPort: %d | src: %d | dest: %d\n",
+            dbg(TRANSPORT_CHANNEL, "INFO (socket): ID: %d | State: %s | srcPort: %d | destPort: %d | src: %d | dest: %d\n",
                 socketID,
                 printedState,
                 printedSocket.srcPort,
@@ -752,23 +880,59 @@ implementation{
         }
     }
 
-    uint32_t getSocketID(uint8_t dest, uint8_t destPort, uint8_t srcPort){
-        return  (srcPort<<24) + (destPort<<16) + (TOS_NODE_ID<<8) +dest;
+    /* == printTimeStamp ==
+        Debug function to print a socket, given a pointer to the timestamp. */
+    void printTimeStamp(timestamp* ts){
+        dbg(TRANSPORT_CHANNEL,"INFO (timestamp): Current: %d | Expiration: %d | ID: %d | Byte: %d\n", call tsTimer.getNow(), ts->expiration, ts->id, ts->byte);
     }
 
+    /* == getSocketID ==
+        Returns a unique socket ID for a given 4-tuple of (destination ID, destination port, source ID, source port). */
+    uint32_t getSocketID(uint8_t dest, uint8_t destPort, uint8_t srcPort){
+        return (srcPort<<24) + (destPort<<16) + (TOS_NODE_ID<<8) + dest;
+    }
+
+    /* == getSID ==
+        Same as getSocketID, but takes a tcPack instead of the 4-tuple. */
     uint32_t getSID(tcpack msg){
+        //Get information needed to retrieve the socket ID.
         uint8_t incomingSrcPort = (msg.ports & 240)>>4;
         uint8_t incomingDestPort = (msg.ports) & 15;
         
+        //Return the ID using getSocketID.
         return getSocketID(msg.src, incomingSrcPort, incomingDestPort);        
     }
 
+    /* == makeTimeStamp ==
+        "Makepack" for a timestamp struct. */
     void makeTimeStamp(timestamp* ts, uint32_t timeout, uint32_t socketID,uint8_t byte){
         ts->expiration = call tsTimer.getNow()+timeout;
         ts->id = socketID;
         ts->byte = byte;
     }
 
+    /* == isByteinFlight ==
+        Function to determine if a given byte is in flight or not.
+        Does so by checking if there exists a timestamp for a given byte for a socket. */
+    bool isByteinFlight(uint32_t socketID, byteCount_t byte){
+        int i=0;
+        uint32_t numInFlight = call tsQueue.size();
+        timestamp ts;
+        //Check every timestamp for the given byte.
+        for(i=0;i<numInFlight;i++){
+            ts = call tsQueue.element(i);
+            //If the byte of the timestamp is the one in question, return TRUE.
+            if(ts.id==socketID && ts.byte == byte){
+                printTimeStamp(&ts);
+                return TRUE;
+            }
+        }
+        //Otherwise, return FALSE.
+        return FALSE;
+    }
+
+    /* == noData ==
+        Code readability function, returns a null pointer. */
     uint8_t noData(){
         return 0;
     }
