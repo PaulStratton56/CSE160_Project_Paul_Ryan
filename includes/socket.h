@@ -56,7 +56,8 @@ typedef struct socket_store_t{
     byteCount_t nextExpected; //Index of the next expected byte for rcvdbuff
 
     uint16_t RTT;
-    byteCount_t effectiveWindow;
+    byteCount_t myWindow;
+    byteCount_t theirWindow;
 }socket_store_t;
 
 #endif

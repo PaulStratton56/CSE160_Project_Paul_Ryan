@@ -18,6 +18,7 @@ module TinyControllerP{
     uses interface Timer<TMilli> as sendDelay;
     uses interface Timer<TMilli> as removeDelay; // Timer to remove the socket after moving to WAIT_FINAL state.
     uses interface Timer<TMilli> as closeDelay; // Dummy timer to signal the app has closed to move from CLOSING to CLOSED.
+    uses interface Timer<TMilli> as probeTimer; //Timer to send a probe to get an updated adWindow.
 
     uses interface Random;
 }
@@ -75,6 +76,7 @@ implementation{
         socket_store_t socket;
         uint8_t length;
         tcpack packet;
+        bool probing = FALSE;
 
         //If a socket wants to send data..
         if(call sendQueue.size()>0){
@@ -82,17 +84,24 @@ implementation{
             socketID = call sendQueue.dequeue();
             socket = call sockets.get(socketID);
 
-            //This needs to change to sliding window, and must consider wraparound
             if(socket.nextToSend!=socket.nextToWrite){
                 timestamp ts;
                 
-                //Get the amount of data to send. This is the minimum between the max payload size, the length of the data, and the sending window of the socket.
+                //Check if the data to be sent should be a probe for the adWindow.
+                if(socket.theirWindow == 0){
+                    socket.theirWindow = 1;
+                    probing = TRUE;
+                    dbg(TRANSPORT_CHANNEL, "INFO (flow): Sending window probe.\n");
+                }
+
+                //Get the amount of data to send. This is the minimum between the max payload size, the length of the data, the sending window of the socket, and the advertised window.
                 length = tc_max_pld_len; //Start with the max payload size,
                 if(((byteCount_t)(socket.nextToWrite-socket.nextToSend)) < length ){ length = ((byteCount_t)(socket.nextToWrite-socket.nextToSend)); } //Then check the amount to send.
-                if(socket.effectiveWindow < length){ length = socket.effectiveWindow; } //Finally, check the sending window.
+                if(socket.myWindow < length){ length = socket.myWindow; } //Check the sending window,
+                if(socket.theirWindow < length){ length = socket.theirWindow; } //And finally, the advertised window.
                 
                 //Make and send the packet.
-                makeTCPack(&packet,0,0,0,length,socketID, ((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE, socket.nextToSend);
+                makeTCPack(&packet, 0, 0, 0, length, socketID, ((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE, socket.nextToSend);
                 call send.send(255,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&packet);
                 dbg(TRANSPORT_CHANNEL,"INFO (transportData): Sent %d bytes: [%d,%d).\n", length, socket.nextToSend%SOCKET_BUFFER_SIZE, (socket.nextToSend+length)%SOCKET_BUFFER_SIZE);
 
@@ -101,20 +110,26 @@ implementation{
                 call timeQueue.enqueue(ts);
                 timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
                 if(!call timeoutTimer.isRunning()){ call timeoutTimer.startOneShot(timeoutTime); }
-                
+
                 //Update the socket with the new "nextToSend" and effective window.
                 socket.nextToSend+=length;
-                socket.effectiveWindow -= length;
+                socket.myWindow -= length;
+                socket.theirWindow -= length;
                 call sockets.insert(socketID,socket);
 
                 //If data can still be sent (and there is more to send), requeue to send more.
-                if(socket.effectiveWindow > 0 && (socket.nextToWrite != socket.nextToSend)){
+                if(socket.myWindow > 0 && socket.theirWindow > 0 && (socket.nextToWrite != socket.nextToSend)){
                     call sendQueue.enqueue(socketID);
                     post sendData();
-                    // dbg(TRANSPORT_CHANNEL, "INFO (window): Reposting; more to send. window: %d | left: %d\n", socket.effectiveWindow, (byteCount_t)(socket.nextToWrite-socket.nextToSend));
+                    // dbg(TRANSPORT_CHANNEL, "INFO (window): Reposting; more to send. window: %d | left: %d\n", socket.myWindow, (byteCount_t)(socket.nextToWrite-socket.nextToSend));
                 }
                 else{
-                    dbg(TRANSPORT_CHANNEL, "WARNING (window): Cannot send more. window: %d | left: %d | NTW: %d | NTS: %d\n", socket.effectiveWindow, (byteCount_t)(socket.nextToWrite-socket.nextToSend), socket.nextToWrite, socket.nextToSend);
+                    //If the message sent was not a probe, and there's more data but the adWindow ran out, start the probing process.
+                    if(!probing && (socket.nextToWrite != socket.nextToSend) && socket.theirWindow == 0){
+                        dbg(TRANSPORT_CHANNEL, "INFO (flow): Starting probing procedure.\n");
+                        call probeTimer.startOneShot(10000);
+                    }
+                    dbg(TRANSPORT_CHANNEL, "WARNING (window): Cannot send more. mywindow: %d | theirwindow: %d | left: %d | NTW: %d | NTS: %d\n", socket.myWindow, socket.theirWindow, (byteCount_t)(socket.nextToWrite-socket.nextToSend), socket.nextToWrite, socket.nextToSend);
                 }
 
             }
@@ -171,7 +186,8 @@ implementation{
                             dbg(TRANSPORT_CHANNEL,"INFO (timeout): Bytes [%d,...) expired. LA:%d | byte: %d | NTS: %d | Socket: %d\n", ts.byte%SOCKET_BUFFER_SIZE, socket.lastAcked, ts.byte, socket.nextToSend, ts.id);
 
                             //Update the socket with the setback (Go Back N style)
-                            socket.effectiveWindow += (byteCount_t)(socket.nextToSend - ts.byte);
+                            socket.myWindow += (byteCount_t)(socket.nextToSend - ts.byte);
+                            socket.theirWindow += (byteCount_t)(socket.nextToSend - ts.byte);
                             socket.nextToSend = ts.byte;
                             call sockets.insert(ts.id,socket);
 
@@ -195,7 +211,8 @@ implementation{
                             dbg(TRANSPORT_CHANNEL,"INFO (timeout): Bytes [%d,...) expired. LA:%d | byte: %d | NTS: %d | Socket: %d\n", ts.byte%SOCKET_BUFFER_SIZE, socket.lastAcked, ts.byte, socket.nextToSend, ts.id);
 
                             //Update the socket with the setback (Go Back N style)
-                            socket.effectiveWindow += (byteCount_t)(socket.nextToSend - ts.byte);
+                            socket.myWindow += (byteCount_t)(socket.nextToSend - ts.byte);
+                            socket.theirWindow += (byteCount_t)(socket.nextToSend - ts.byte);
                             socket.nextToSend = ts.byte;
                             call sockets.insert(ts.id,socket);
 
@@ -227,7 +244,8 @@ implementation{
         
         //Change socket state. Since the socket is closed, don't send data.
         socket.state = WAIT_ACKFIN;
-        socket.effectiveWindow = 0;
+        socket.myWindow = 0;
+        socket.theirWindow = 0;
         call sockets.insert(IDtoClose, socket);
 
         //Send a FIN.
@@ -313,10 +331,10 @@ implementation{
 
                                 //Send an ACK for the data.
                                 makeTCPack(&acker,0,1,0,0,socketID,
-                                    (SOCKET_BUFFER_SIZE+socket.nextToRead - socket.nextExpected)%SOCKET_BUFFER_SIZE, //advertised window; negative mod may be problem
+                                    ((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE,
                                     noData());
                                 call send.send(255,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&acker);
-                                dbg(TRANSPORT_CHANNEL,"INFO (transportData): ACK [%d, %d). nextExpected: %d | window: %d\n",incomingMsg.currbyte%SOCKET_BUFFER_SIZE,(incomingMsg.currbyte+incomingSize)%SOCKET_BUFFER_SIZE,socket.nextExpected%SOCKET_BUFFER_SIZE, (SOCKET_BUFFER_SIZE+socket.nextToRead - socket.nextExpected)%SOCKET_BUFFER_SIZE);
+                                dbg(TRANSPORT_CHANNEL,"INFO (transportData): ACK [%d, %d). nextExpected: %d | window: %d\n", incomingMsg.currbyte%SOCKET_BUFFER_SIZE,(incomingMsg.currbyte+incomingSize)%SOCKET_BUFFER_SIZE,socket.nextExpected%SOCKET_BUFFER_SIZE, (SOCKET_BUFFER_SIZE+socket.nextToRead - socket.nextExpected)%SOCKET_BUFFER_SIZE);
                                 
                                 //Tell the application that data is ready to receive.
                                 signal TinyController.gotData(socketID,socket.nextExpected-socket.nextToRead);//signal how much contiguous data is ready
@@ -353,30 +371,33 @@ implementation{
                             case(CONNECTED):
                                 // dbg(TRANSPORT_CHANNEL,"Got Ack. %d is expecting byte %d. My next byte is %d. Last Acked: %d\n",incomingMsg.src,incomingMsg.nextbyte,socket.nextToSend, socket.lastAcked);
                                 
-                                //Previous wraparound code. Analyze if needed.
-                                // if(((byteCount_t)(socket.nextToSend-socket.lastAcked)<SOCKET_BUFFER_SIZE && (byteCount_t)(incomingMsg.nextbyte-socket.lastAcked)<SOCKET_BUFFER_SIZE) //no wrap
-                                // || ((byteCount_t)(socket.nextToSend-socket.lastAcked)>SOCKET_BUFFER_SIZE && (byteCount_t)(incomingMsg.nextbyte-socket.lastAcked)>SOCKET_BUFFER_SIZE)){//wrap
-                                
+                                //If the probe timer is running, stop it immediately. A response was sent!
+                                if(call probeTimer.isRunning()){
+                                    call probeTimer.stop();
+                                    dbg(TRANSPORT_CHANNEL, "INFO (flow): probeTimer stopped.\n");
+                                }
+
                                 //If the ACK is acking previously unACKed data, update the socket.
                                 if((byteCount_t)(incomingMsg.nextbyte - socket.lastAcked) < SOCKET_BUFFER_SIZE){//if acking more stuff
                                     //Get the number of bytes acked to update window size.
                                     uint8_t bytesAcked = (byteCount_t)(incomingMsg.nextbyte - socket.lastAcked);
                                     dbg(TRANSPORT_CHANNEL, "INFO (window): [%d,%d) ACKed (%d bytes).\n", socket.lastAcked%SOCKET_BUFFER_SIZE, incomingMsg.nextbyte%SOCKET_BUFFER_SIZE, bytesAcked);
-                                    // if(socket.effectiveWindow+bytesAcked != incomingMsg.adWindow){
-                                    //     dbg(TRANSPORT_CHANNEL, "WARNING (window): mismatch in windows. eff+acked: %d | ad: %d\n", socket.effectiveWindow+bytesAcked, incomingMsg.adWindow);
+                                    // if(socket.myWindow+bytesAcked != incomingMsg.adWindow){
+                                    //     dbg(TRANSPORT_CHANNEL, "WARNING (window): mismatch in windows. eff+acked: %d | ad: %d\n", socket.myWindow+bytesAcked, incomingMsg.adWindow);
                                     // }
 
                                     //Update the socket.
                                     socket.lastAcked = incomingMsg.nextbyte;
-                                    socket.effectiveWindow += bytesAcked;
+                                    socket.myWindow += bytesAcked;
+                                    socket.theirWindow = incomingMsg.adWindow;
                                     call sockets.insert(socketID, socket);
 
                                     //If we have more data to send, and there isn't data in flight, then send the next piece!
-                                    if(socket.nextToWrite!=socket.nextToSend && socket.effectiveWindow > 0){
+                                    if(socket.nextToWrite!=socket.nextToSend && socket.myWindow > 0 && socket.theirWindow > 0){
                                         //Queue the data to send.
                                         call sendQueue.enqueue(socketID);
                                         post sendData();
-                                        dbg(TRANSPORT_CHANNEL, "INFO (window): Posting send. window: %d\n", socket.effectiveWindow);
+                                        dbg(TRANSPORT_CHANNEL, "INFO (window): Posting send. myWindow: %d | theirWindow: %d\n", socket.myWindow, socket.theirWindow);
                                     }
                                 }
                                 else{ //Ack is for previous data.
@@ -476,7 +497,8 @@ implementation{
                         socket.lastAcked = incomingMsg.nextbyte;
                         
                         //The other side is closed, don't send data.
-                        socket.effectiveWindow = 0;
+                        socket.myWindow = 0;
+                        socket.theirWindow = 0;
 
                         //Update the socket's expected sequence.
                         socket.nextExpected++;
@@ -565,7 +587,7 @@ implementation{
         }
         else{
             call ports.insert((uint32_t)portRequest, ptcl);
-            dbg(TRANSPORT_CHANNEL, "PTL %d on Port %d\n",ptcl, portRequest);
+            // dbg(TRANSPORT_CHANNEL, "PTL %d on Port %d\n",ptcl, portRequest);
             return SUCCESS;
         }
     }
@@ -706,7 +728,7 @@ implementation{
                 memcpy(location,&(readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]),length-overflow);
                 memcpy(location+length-overflow,&(readSocket.recvBuff[0]),overflow);
             }
-            //Update the socket's pointers to reflect this read action.
+            //Update the socket's pointers to reflect this read action. Note this updates the window as well.
             readSocket.nextToRead+=length;
             call sockets.insert(socketID,readSocket);
             return SUCCESS;
@@ -744,7 +766,8 @@ implementation{
         //Get the ID of the socket to close. This should be done on a queue of IDtoCloses, not just a static one.
         socket_store_t socket = call sockets.get(IDtoClose);
         socket.state = CLOSED;
-        socket.effectiveWindow = 0;
+        socket.myWindow = 0;
+        socket.theirWindow = 0;
         call sockets.insert(IDtoClose, socket);
 
         //Create and send a FIN message to the other end of the connection.
@@ -784,6 +807,11 @@ implementation{
         dbg(TRANSPORT_CHANNEL, "INFO (socket): removeDelay fired. Removing socket %d. %d remaining sockets.\n", IDtoClose, call sockets.size());
     }
 
+    event void probeTimer.fired(){
+        //send a 1-byte probe to see if the window is updated.
+        post sendData();
+    }
+
     /* == createSocket ==
         Called when socket creation is necessary, and a socket does not already exist.
         Initializes and adds a socket to the sockets hash with given parameters.
@@ -821,7 +849,8 @@ implementation{
         socket->RTT = 4000;
 
         //Initializing, we assume the whole buffer as a window.
-        socket->effectiveWindow = SOCKET_BUFFER_SIZE;
+        socket->myWindow = SOCKET_BUFFER_SIZE;
+        socket->theirWindow = SOCKET_BUFFER_SIZE;
 
         //Insert this new socket into the hash.
         call sockets.insert(getSocketID(dest,destPort,srcPort),*socket); 
@@ -927,9 +956,11 @@ implementation{
                 default:
                     dbg(TRANSPORT_CHANNEL, "Unknown state.\n");
             }
-            dbg(TRANSPORT_CHANNEL, "INFO (socket): ID: %d | State: %s | srcPort: %d | destPort: %d | src: %d | dest: %d\n",
+            dbg(TRANSPORT_CHANNEL, "INFO (socket): ID: %d | State: %s | myWindow: %d | theirWindow: %d | srcPort: %d | destPort: %d | src: %d | dest: %d\n",
                 socketID,
                 printedState,
+                printedSocket.myWindow,
+                printedSocket.theirWindow,
                 printedSocket.srcPort,
                 printedSocket.dest.port,
                 TOS_NODE_ID,

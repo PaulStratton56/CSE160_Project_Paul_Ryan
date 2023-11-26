@@ -38,6 +38,9 @@ implementation{
     components new TimerMilliC() as closeDelay;
     TinyControllerP.closeDelay -> closeDelay;
 
+    components new TimerMilliC() as probeTimer;
+    TinyControllerP.probeTimer -> probeTimer;
+
     components RandomC as Random;
     TinyControllerP.Random -> Random;
 
