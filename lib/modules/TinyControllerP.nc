@@ -13,19 +13,17 @@ module TinyControllerP{
     uses interface Queue<uint32_t> as sendQueue; // Queue to send across multiple sockets
     uses interface Queue<tcpack> as receiveQueue; // Queue to receive across multiple sockets
     uses interface Queue<timestamp> as timeQueue; // Queue to retransmit across multiple sockets
+    uses interface Queue<timestamp> as sendRemoveQueue; // Queue to keep track of when a socket is ready to send, or when it is ready to be removed
+    uses interface Queue<uint32_t> as IDstoClose;
 
     uses interface Timer<TMilli> as timeoutTimer;
-    uses interface Timer<TMilli> as sendDelay;
-    uses interface Timer<TMilli> as removeDelay; // Timer to remove the socket after moving to WAIT_FINAL state.
-    uses interface Timer<TMilli> as closeDelay; // Dummy timer to signal the app has closed to move from CLOSING to CLOSED.
     uses interface Timer<TMilli> as probeTimer; //Timer to send a probe to get an updated adWindow.
-
+    uses interface Timer<TMilli> as sendRemoveTimer; //Timer for sendRemoveQueue
     uses interface Random;
 }
 
 implementation{
     tcpack storedMsg;
-    uint32_t IDtoClose;//problems
     int timeoutTime;
     uint8_t readDataBuffer[SOCKET_BUFFER_SIZE];
     enum flags{
@@ -84,6 +82,11 @@ implementation{
             socketID = call sendQueue.dequeue();
             socket = call sockets.get(socketID);
 
+            if(socket.state!=CONNECTED){
+                dbg(TRANSPORT_CHANNEL,"ERROR (sendData): Socket %d not in CONNECTED state.\n",socketID);
+                return;
+            }
+
             if(socket.nextToSend!=socket.nextToWrite){
                 timestamp ts;
                 
@@ -108,7 +111,7 @@ implementation{
                 //Add a retransmission timestamp for the packet, and call the retransmission timer if not in progress.
                 makeTimeStamp(&ts, 2*socket.RTT, socketID, socket.nextToSend, EMPTY);
                 call timeQueue.enqueue(ts);
-                timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
+                timeoutTime = (call timeQueue.empty()) ? 2*socket.RTT : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
                 if(!call timeoutTimer.isRunning()){ call timeoutTimer.startOneShot(timeoutTime); }
 
                 //Update the socket with the new "nextToSend" and effective window.
@@ -134,11 +137,11 @@ implementation{
 
             }
             else{ // There's no outbound data from any socket.
-                dbg(TRANSPORT_CHANNEL,"No data in sendBuffer of socket %d\n",socketID);
+                dbg(TRANSPORT_CHANNEL,"WARNING (sendData): No data in sendBuffer of socket %d\n",socketID);
             }
         }
         else{
-            dbg(TRANSPORT_CHANNEL,"Nothing in sendQueue\n");
+            dbg(TRANSPORT_CHANNEL,"WARNING (sendData): Nothing in sendQueue\n");
         }
     }
 
@@ -234,23 +237,78 @@ implementation{
         timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
         call timeoutTimer.startOneShot(timeoutTime);
     }
-    
+
     /* == closeSocket ==
         Begins the teardown procedure by sending a FIN and updating state. 
         Called when the "clostConnection" command is called. */
     task void closeSocket(){
         socket_store_t socket;
-        socket = call sockets.get(IDtoClose);
-        
-        //Change socket state. Since the socket is closed, don't send data.
-        socket.state = WAIT_ACKFIN;
-        socket.myWindow = 0;
-        socket.theirWindow = 0;
-        call sockets.insert(IDtoClose, socket);
+        uint32_t IDtoClose;
+        if(call IDstoClose.size()>0){
+            IDtoClose = call IDstoClose.dequeue();
+            if(call sockets.contains(IDtoClose)){
+                socket = call sockets.get(IDtoClose);
+                
+                //Change socket state. Since the socket is closed, don't send data.
+                if(socket.state==CLOSED){
+                    return;
+                }
+                else if(socket.state==CLOSING){
+                    socket.state = CLOSED;
+                    dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN. State: CLOSED\n");
+                }
+                else{
+                    socket.state = WAIT_ACKFIN;
+                    dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN. State: WAIT_ACKFIN\n");
+                }
+                socket.myWindow = 0;
+                socket.theirWindow = 0;
+                call sockets.insert(IDtoClose, socket);
 
-        //Send a FIN.
-        sendSUTD(IDtoClose, FIN);
-        dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN. State: WAIT_ACKFIN\n");
+                //Send a FIN.
+                sendSUTD(IDtoClose, FIN);
+            }
+            if(call IDstoClose.size()>0){
+                post closeSocket();
+            }
+        }
+    }
+
+    task void checkSRtimeouts(){
+        int num_queuedSockets = call sendRemoveQueue.size();
+        int i=0;
+        timestamp ts;
+        uint32_t currentTime = call sendRemoveTimer.getNow();
+        for(i=0;i<num_queuedSockets;i++){
+            if(currentTime < (call sendRemoveQueue.head()).expiration){
+                //this isn't expired, so nothing in the queue is expired
+                break;
+            }
+            ts = call sendRemoveQueue.dequeue();
+            if(ts.intent==CONNECTED){
+                //Get and update the socket so it is ready to send data.
+                socket_store_t socket = call sockets.get(ts.id);
+                socket.nextToWrite = socket.nextToSend;
+                socket.nextToRead = socket.nextExpected;
+                call sockets.insert(ts.id,socket);
+
+                //Signal the connection is ready to use.
+                signal TinyController.connected(ts.id);
+                
+                dbg(TRANSPORT_CHANNEL, "INFO (setup): Socket %d Ready to send.\n",ts.id);
+            }
+            else if(ts.intent==WAIT_FINAL){
+                call sockets.remove(ts.id);
+                dbg(TRANSPORT_CHANNEL, "INFO (socket): removeDelay fired. Removing socket %d. %d remaining sockets.\n", ts.id, call sockets.size());
+            }
+            else if(ts.intent==CLOSING){
+                call IDstoClose.enqueue(ts.id);
+                post closeSocket();
+            }
+            else{
+                dbg(TRANSPORT_CHANNEL,"ERROR (sendRemoveTimer): I don't know how to handle this.\n");
+            }
+        }
     }
 
     /* == handlePack ==
@@ -421,7 +479,6 @@ implementation{
                                 call sockets.insert(socketID, socket);
                                 dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN ACKED. State: WAIT_FIN\n");
                                 break;
-                            //Static memory "IDtoClose" causes issues. Implement a queue.
                             //If only waiting for an ACK, begin socket removal process.
                             //Change this such that it sends an ACK now that it has seen both a FIN and ACK.
                             case(WAIT_ACK):
@@ -433,8 +490,12 @@ implementation{
                                 //Now, send an ACK.
                                 sendSUTD(socketID, ACK);
 
-                                IDtoClose = socketID;
-                                call removeDelay.startOneShot(2*socket.RTT);
+                                {//timestamp scope
+                                    timestamp ts;
+                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,WAIT_FINAL);
+                                    call sendRemoveQueue.enqueue(ts);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                }
                                 dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN ACKED. State: WAIT_FINAL\n");
                                 
                                 break;
@@ -452,11 +513,16 @@ implementation{
                             //If connected, tell app to close and respond via an ack.
                             //For now, this "signal" is done by a dummy timer that responds after a certain period of time to represent the app has closed.
                             case(CONNECTED):
-                                IDtoClose = socketID;
                                 socket.state = CLOSING;
                                 dbg(TRANSPORT_CHANNEL, "INFO (teardown): ACKED FIN. State: CLOSING\n");
 
-                                call closeDelay.startOneShot(4*socket.RTT);
+                                signal TinyController.closing(socketID);
+                                {//timestamp scope
+                                    timestamp ts;
+                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,CLOSING);
+                                    call sendRemoveQueue.enqueue(ts);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                }
                                 break;
                             //If waiting for an ACK and a FIN before closing, update to only wait for an ACK.
                             case(WAIT_ACKFIN):
@@ -467,15 +533,24 @@ implementation{
                             //If waiting only for FIN, begin socket removal process.
                             case(WAIT_FIN):
                                 socket.state = WAIT_FINAL;
-                                IDtoClose = socketID;
                                 dbg(TRANSPORT_CHANNEL, "INFO (teardown): ACKED FIN. State: WAIT_FINAL\n");
 
-                                call removeDelay.startOneShot(2*socket.RTT);
+                                {//timestamp scope, removeDelay
+                                    timestamp ts;
+                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,WAIT_FINAL);
+                                    call sendRemoveQueue.enqueue(ts);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                }
                                 break;
                             //If we get another FIN while waiting to remove the socket, restart the timer and send another ACK.
                             //This is a retransmission, so we decrement the expected sequence.
                             case(WAIT_FINAL):
-                                call removeDelay.startOneShot(2*socket.RTT);
+                                {//timestamp scope, removeDelay
+                                    timestamp ts;
+                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,WAIT_FINAL);
+                                    call sendRemoveQueue.enqueue(ts);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                }
                                 socket.nextExpected--;
                                 socket.nextToSend--;
                                 dbg(TRANSPORT_CHANNEL, "WARNING (teardown): ACKED FIN. Restarting removeDelay.\n");
@@ -522,7 +597,12 @@ implementation{
                             sendSUTD(socketID, ACK);
 
                             //Prepare to send data.
-                            call sendDelay.startOneShot(4*socket.RTT);
+                            {//timestamp scope
+                                timestamp ts;
+                                makeTimeStamp(&ts,2*socket.RTT,socketID,0,CONNECTED);
+                                call sendRemoveQueue.enqueue(ts);
+                                if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                            }
                         }
                         //If we're connected, this is a retransmit. Restart the sendDelay and respond with an ACK.
                         else if(socket.state == CONNECTED){
@@ -533,7 +613,12 @@ implementation{
                             dbg(TRANSPORT_CHANNEL, "WARNING: Retransmitted SYNC_ACK. Restarting sendDelay.\n");
 
                             //Prepare to send data... again.
-                            call sendDelay.startOneShot(socket.RTT);
+                            {//timestamp scope
+                                timestamp ts;
+                                makeTimeStamp(&ts,2*socket.RTT,socketID,0,CONNECTED);
+                                call sendRemoveQueue.enqueue(ts);
+                                if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                            }
                         }
                         else{ //unknown behavior
                             dbg(TRANSPORT_CHANNEL, "ERROR: SYNC_ACK, state = %s\n", getPrinted(socket.state, TRUE));
@@ -643,7 +728,7 @@ implementation{
             return FAIL;
         }
 
-        IDtoClose = socketID;
+        call IDstoClose.enqueue(socketID);
         post closeSocket();
 
         return SUCCESS;
@@ -739,6 +824,11 @@ implementation{
         }
     }
 
+    command void TinyController.finishClose(uint32_t socketID){
+        call IDstoClose.enqueue(socketID);
+        post closeSocket();
+    }
+
     /* == gotTCP ==
         Signaled when Waysender receives a packet marked with a TCP protocol.
         Copies the pack into memory and queues it for handling. */
@@ -762,50 +852,46 @@ implementation{
         Called when the closeDelay timer is fired.
         This timer is a dummy timer, used to represent an application signaling that it is finished with a connection.
         It is called right now upon receiving a FIN packet when in the CONNECTED state. */
-    event void closeDelay.fired(){
-        //Get the ID of the socket to close. This should be done on a queue of IDtoCloses, not just a static one.
-        socket_store_t socket = call sockets.get(IDtoClose);
-        socket.state = CLOSED;
-        socket.myWindow = 0;
-        socket.theirWindow = 0;
-        call sockets.insert(IDtoClose, socket);
-
-        //Create and send a FIN message to the other end of the connection.
-        sendSUTD(IDtoClose, FIN);
-        dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN. State: CLOSED\n");
+    // event void closeDelay.fired(){
+    //     post closeSocket();
+    // }
+    
+    event void sendRemoveTimer.fired(){
+        post checkSRtimeouts();
     }
+
 
     /* == sendDelay.fired ==
         called when the sendDelay timer is fired.
         This timer represents the delay necessary after sending an ACK to a SYNC_ACK before sending data.
         Once this timer fires, variables are updated and a signal that the socket is ready is sent to all applications.
         This obviously has security concerns. */
-    event void sendDelay.fired(){
-        //As of right now, only the first socket sends data for a given simulation. 
-        //A queue for sockets to signal they are ready to send must be implemented.
-        uint32_t socketID = call sockets.getIndex(0);
+    // event void sendDelay.fired(){
+    //     //As of right now, only the first socket sends data for a given simulation. 
+    //     //A queue for sockets to signal they are ready to send must be implemented.
+    //     uint32_t socketID = call sockets.getIndex(0);
 
-        //Get and update the socket so it is ready to send data.
-        socket_store_t socket = call sockets.get(socketID);
-        socket.nextToWrite = socket.nextToSend;
-        socket.nextToRead = socket.nextExpected;
-        call sockets.insert(socketID,socket);
+    //     //Get and update the socket so it is ready to send data.
+    //     socket_store_t socket = call sockets.get(socketID);
+    //     socket.nextToWrite = socket.nextToSend;
+    //     socket.nextToRead = socket.nextExpected;
+    //     call sockets.insert(socketID,socket);
 
-        //Signal the connection is ready to use.
-        signal TinyController.connected(socketID);
+    //     //Signal the connection is ready to use.
+    //     signal TinyController.connected(socketID);
         
-        dbg(TRANSPORT_CHANNEL, "INFO (setup): Socket %d RTS.\n",socketID);
-    }
+    //     dbg(TRANSPORT_CHANNEL, "INFO (setup): Socket %d RTS.\n",socketID);
+    // }
 
     /* == removeDelay.fired ==
         Called when the removeDelay timer fires.
         This timer is called when a client connection enters a WAIT_FINAL state.
         After this timer fires, the connection is assumed to be mutually closed, and the socket is removed from the client. */
-    event void removeDelay.fired(){
-        //As of right now, this is done via a static "IDtoClose" variable. This should be changed to a queue of sockets to close.
-        call sockets.remove(IDtoClose);
-        dbg(TRANSPORT_CHANNEL, "INFO (socket): removeDelay fired. Removing socket %d. %d remaining sockets.\n", IDtoClose, call sockets.size());
-    }
+    // event void removeDelay.fired(){
+    //     //As of right now, this is done via a static "IDtoClose" variable. This should be changed to a queue of sockets to close.
+    //     call sockets.remove(IDtoClose);
+    //     dbg(TRANSPORT_CHANNEL, "INFO (socket): removeDelay fired. Removing socket %d. %d remaining sockets.\n", IDtoClose, call sockets.size());
+    // }
 
     event void probeTimer.fired(){
         //send a 1-byte probe to see if the window is updated.
@@ -910,69 +996,6 @@ implementation{
                 memcpy(pkt->data+size-overflow,&(socket.sendBuff[0]),overflow);
             }
         } 
-    }
-
-    /* == printSocket ==
-        Debugging function to print the state of a socket, given a socketID. */
-    void printSocket(uint32_t socketID){
-        if(!call sockets.contains(socketID)){
-            dbg(TRANSPORT_CHANNEL, "ERROR: No socket with ID %d exists.\n",socketID);
-        }
-        else{
-            socket_store_t printedSocket = call sockets.get(socketID);
-            char* printedState = getPrinted(printedSocket.state, TRUE);
-            //This translated given state codes into the names of each code.
-            switch(printedSocket.state){
-                case(LISTEN):
-                    printedState = "LISTEN";
-                    break;
-                case(CONNECTED):
-                    printedState = "CONNECTED";
-                    break;
-                case(SYNC_SENT):
-                    printedState = "SYNC_SENT";
-                    break;
-                case(SYNC_RCVD):
-                    printedState = "SYNC_RCVD";
-                    break;
-                case(WAIT_ACKFIN):
-                    printedState = "WAIT_ACKFIN";
-                    break;
-                case(WAIT_FIN):
-                    printedState = "WAIT_FIN";
-                    break;
-                case(WAIT_ACK):
-                    printedState = "WAIT_ACK";
-                    break;
-                case(WAIT_FINAL):
-                    printedState = "WAIT_FINAL";
-                    break;
-                case(CLOSED):
-                    printedState = "CLOSED";
-                    break;
-                case(CLOSING):
-                    printedState = "CLOSING";
-                    break;
-                default:
-                    dbg(TRANSPORT_CHANNEL, "Unknown state.\n");
-            }
-            dbg(TRANSPORT_CHANNEL, "INFO (socket): ID: %d | State: %s | myWindow: %d | theirWindow: %d | srcPort: %d | destPort: %d | src: %d | dest: %d\n",
-                socketID,
-                printedState,
-                printedSocket.myWindow,
-                printedSocket.theirWindow,
-                printedSocket.srcPort,
-                printedSocket.dest.port,
-                TOS_NODE_ID,
-                printedSocket.dest.addr
-            );
-        }
-    }
-
-    /* == printTimeStamp ==
-        Debug function to print a socket, given a pointer to the timestamp. */
-    void printTimeStamp(timestamp* ts){
-        dbg(TRANSPORT_CHANNEL,"INFO (timestamp): Current: %d | Expiration: %d | ID: %d | Byte: %d | intent: %s\n", call timeoutTimer.getNow(), ts->expiration, ts->id, ts->byte, getPrinted(ts->intent, FALSE));
     }
 
     /* == getSocketID ==
@@ -1130,6 +1153,69 @@ implementation{
         }
         // dbg(TRANSPORT_CHANNEL, "INFO (timeout): %s fulfilled (state: %s).\n", getPrinted(ts.intent, FALSE), getPrinted(socket.state, TRUE));
         return FALSE;
+    }
+    
+    /* == printSocket ==
+        Debugging function to print the state of a socket, given a socketID. */
+    void printSocket(uint32_t socketID){
+        if(!call sockets.contains(socketID)){
+            dbg(TRANSPORT_CHANNEL, "ERROR: No socket with ID %d exists.\n",socketID);
+        }
+        else{
+            socket_store_t printedSocket = call sockets.get(socketID);
+            char* printedState = getPrinted(printedSocket.state, TRUE);
+            //This translated given state codes into the names of each code.
+            switch(printedSocket.state){
+                case(LISTEN):
+                    printedState = "LISTEN";
+                    break;
+                case(CONNECTED):
+                    printedState = "CONNECTED";
+                    break;
+                case(SYNC_SENT):
+                    printedState = "SYNC_SENT";
+                    break;
+                case(SYNC_RCVD):
+                    printedState = "SYNC_RCVD";
+                    break;
+                case(WAIT_ACKFIN):
+                    printedState = "WAIT_ACKFIN";
+                    break;
+                case(WAIT_FIN):
+                    printedState = "WAIT_FIN";
+                    break;
+                case(WAIT_ACK):
+                    printedState = "WAIT_ACK";
+                    break;
+                case(WAIT_FINAL):
+                    printedState = "WAIT_FINAL";
+                    break;
+                case(CLOSED):
+                    printedState = "CLOSED";
+                    break;
+                case(CLOSING):
+                    printedState = "CLOSING";
+                    break;
+                default:
+                    dbg(TRANSPORT_CHANNEL, "Unknown state.\n");
+            }
+            dbg(TRANSPORT_CHANNEL, "INFO (socket): ID: %d | State: %s | myWindow: %d | theirWindow: %d | srcPort: %d | destPort: %d | src: %d | dest: %d\n",
+                socketID,
+                printedState,
+                printedSocket.myWindow,
+                printedSocket.theirWindow,
+                printedSocket.srcPort,
+                printedSocket.dest.port,
+                TOS_NODE_ID,
+                printedSocket.dest.addr
+            );
+        }
+    }
+
+    /* == printTimeStamp ==
+        Debug function to print a socket, given a pointer to the timestamp. */
+    void printTimeStamp(timestamp* ts){
+        dbg(TRANSPORT_CHANNEL,"INFO (timestamp): Current: %d | Expiration: %d | ID: %d | Byte: %d | intent: %s\n", call timeoutTimer.getNow(), ts->expiration, ts->id, ts->byte, getPrinted(ts->intent, FALSE));
     }
 
     /* == getPrinted ==
