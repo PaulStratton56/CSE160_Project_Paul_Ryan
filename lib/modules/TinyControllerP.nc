@@ -170,7 +170,7 @@ implementation{
                         socket.nextToSend--;
                         socket.lastAcked--;
                         call sockets.insert(ts.id, socket);
-                        dbg(TRANSPORT_CHANNEL, "INFO (timeout): %s expired. NTS: %d\n", getPrinted(ts.intent, FALSE), socket.nextToSend);
+                        dbg(TRANSPORT_CHANNEL, "INFO (timeout): %s to %d expired. State: %s NTS: %d\n", getPrinted(ts.intent, FALSE), socket.dest.addr, getPrinted(socket.state, TRUE), socket.nextToSend);
                         sendSUTD(ts.id, ts.intent);
                     }
                     else{ //Timestamp still valid, requeue.
@@ -255,11 +255,11 @@ implementation{
                 }
                 else if(socket.state==CLOSING){
                     socket.state = CLOSED;
-                    dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN. State: CLOSED\n");
+                    dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN to %d. State: CLOSED\n", socket.dest.addr);
                 }
                 else{
                     socket.state = WAIT_ACKFIN;
-                    dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN. State: WAIT_ACKFIN\n");
+                    dbg(TRANSPORT_CHANNEL, "INFO (teardown): Sent FIN to %d. State: WAIT_ACKFIN\n", socket.dest.addr);
                 }
                 socket.myWindow = 0;
                 socket.theirWindow = 0;
@@ -298,8 +298,9 @@ implementation{
                 dbg(TRANSPORT_CHANNEL, "INFO (setup): Socket %d Ready to send.\n",ts.id);
             }
             else if(ts.intent==WAIT_FINAL){
+                socket_store_t socket = call sockets.get(ts.id);
                 call sockets.remove(ts.id);
-                dbg(TRANSPORT_CHANNEL, "INFO (socket): removeDelay fired. Removing socket %d. %d remaining sockets.\n", ts.id, call sockets.size());
+                dbg(TRANSPORT_CHANNEL, "INFO (socket): removeDelay fired. Removing socket %d to %d. %d remaining sockets.\n", ts.id, socket.dest.addr, call sockets.size());
             }
             else if(ts.intent==CLOSING){
                 call IDstoClose.enqueue(ts.id);
@@ -358,8 +359,8 @@ implementation{
                                     //If copying into the buffer does not require a wraparound, then directly copy.
                                     if(socket.nextExpected%SOCKET_BUFFER_SIZE+incomingSize<SOCKET_BUFFER_SIZE){
                                         memcpy(&(socket.recvBuff[socket.nextExpected%SOCKET_BUFFER_SIZE]),incomingMsg.data,incomingSize);
-                                        dbg(TRANSPORT_CHANNEL, "INFO (buffer): Copied [%d, %d) (%d bytes). Buffer:\n", incomingMsg.currbyte%SOCKET_BUFFER_SIZE, (incomingMsg.currbyte+incomingSize)%SOCKET_BUFFER_SIZE, incomingSize);
-                                        printBuffer(socket.recvBuff, SOCKET_BUFFER_SIZE);
+                                        // dbg(TRANSPORT_CHANNEL, "INFO (buffer): Copied [%d, %d) (%d bytes). Buffer:\n", incomingMsg.currbyte%SOCKET_BUFFER_SIZE, (incomingMsg.currbyte+incomingSize)%SOCKET_BUFFER_SIZE, incomingSize);
+                                        // printBuffer(socket.recvBuff, SOCKET_BUFFER_SIZE);
                                     }
                                     else{//Copying requires a buffer wraparound
                                         //Calculate the remaining bytes that do not fit in the remaining buffer before wrap.
@@ -467,9 +468,15 @@ implementation{
                             //  Must change such that the client responds only with an ACK if both FIN and ACK are received.
                             //If we've closed and responded to their FIN with an ACK, then the ACK gives us permission to close.
                             case(CLOSED):
-                                //Remove the socket.
-                                call sockets.remove(socketID);
-                                dbg(TRANSPORT_CHANNEL, "INFO (socket): FIN ACKED. Removing socket %d. %d remaining sockets.\n",socketID,call sockets.size());
+                                //Remove the socket if the ACK is for closing.
+                                //Need to ensure this isn't an ACK for data that got delayed.
+                                if(incomingMsg.adWindow == 0){
+                                    call sockets.remove(socketID);
+                                    dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN to %d ACKED. Removing socket %d. %d remaining sockets.\n", socket.dest.addr, socketID, call sockets.size());
+                                }
+                                else{
+                                    dbg(TRANSPORT_CHANNEL, "WARNING (teardown): Data ACK in closing? Dropping.\n");
+                                }
                                 break;
                             //If waiting for an ACK and a FIN before closing, update to only wait for a FIN.
                             case(WAIT_ACKFIN): 
@@ -477,7 +484,7 @@ implementation{
                                 socket.state = WAIT_FIN;
                                 socket.nextExpected++;
                                 call sockets.insert(socketID, socket);
-                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN ACKED. State: WAIT_FIN\n");
+                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN to %d ACKED. State: WAIT_FIN\n", socket.dest.addr);
                                 break;
                             //If only waiting for an ACK, begin socket removal process.
                             //Change this such that it sends an ACK now that it has seen both a FIN and ACK.
@@ -496,7 +503,7 @@ implementation{
                                     call sendRemoveQueue.enqueue(ts);
                                     if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
                                 }
-                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN ACKED. State: WAIT_FINAL\n");
+                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN to %d ACKED. State: WAIT_FINAL\n", socket.dest.addr);
                                 
                                 break;
                             //Unexpected state, therefore unknown behavior. Drop packet.
@@ -514,7 +521,7 @@ implementation{
                             //For now, this "signal" is done by a dummy timer that responds after a certain period of time to represent the app has closed.
                             case(CONNECTED):
                                 socket.state = CLOSING;
-                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): ACKED FIN. State: CLOSING\n");
+                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): ACKED FIN to %d. State: CLOSING\n", socket.dest.addr);
 
                                 signal TinyController.closing(socketID);
                                 {//timestamp scope
@@ -527,13 +534,14 @@ implementation{
                             //If waiting for an ACK and a FIN before closing, update to only wait for an ACK.
                             case(WAIT_ACKFIN):
                                 socket.state = WAIT_ACK;
-                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): ACKED FIN. State: WAIT_ACK\n");
-                                return; //Prevents sending an ACK until FIN is received.
+
+                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): Got FIN from %d. State: WAIT_ACK\n", socket.dest.addr);
+                                break;
                             //Static memory "IDtoClose" causes issues. Implement a queue.
                             //If waiting only for FIN, begin socket removal process.
                             case(WAIT_FIN):
                                 socket.state = WAIT_FINAL;
-                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): ACKED FIN. State: WAIT_FINAL\n");
+                                dbg(TRANSPORT_CHANNEL, "INFO (teardown): ACKED FIN to %d. State: WAIT_FINAL\n", socket.dest.addr);
 
                                 {//timestamp scope, removeDelay
                                     timestamp ts;
@@ -553,7 +561,7 @@ implementation{
                                 }
                                 socket.nextExpected--;
                                 socket.nextToSend--;
-                                dbg(TRANSPORT_CHANNEL, "WARNING (teardown): ACKED FIN. Restarting removeDelay.\n");
+                                dbg(TRANSPORT_CHANNEL, "WARNING (teardown): ACKED FIN to %d. Restarting removeDelay.\n", socket.dest.addr);
                                 break;
                             //If we get another FIN while waiting for an ACK in CLOSED or CLOSING, then original ACK was lost.
                             //Send another ACK.
@@ -561,11 +569,11 @@ implementation{
                             case(CLOSING):
                                 socket.nextExpected--;
                                 socket.nextToSend--;
-                                dbg(TRANSPORT_CHANNEL, "WARNING: ACKED Retransmitted FIN.\n");
+                                dbg(TRANSPORT_CHANNEL, "WARNING: ACKED Retransmitted FIN to %d.\n", socket.dest.addr);
                                 break;
                             //Unexpected state, therefore unknown behavior. Drop packet by returning.
                             default:
-                                dbg(TRANSPORT_CHANNEL, "ERROR: ACKED FIN, state = %s\n", getPrinted(socket.state, TRUE));
+                                dbg(TRANSPORT_CHANNEL, "ERROR: ACKED FIN to %d, state = %s\n", socket.dest.addr, getPrinted(socket.state, TRUE));
                                 return;
                         }
                         //Update the last Acked byte.
@@ -580,7 +588,7 @@ implementation{
                         call sockets.insert(socketID, socket);
 
                         //Send the ACK.
-                        sendSUTD(socketID, ACK);
+                        if(socket.state != WAIT_ACK){ sendSUTD(socketID, ACK); }
                         break;
                     //SYNC: 1 | ACK: 1 | FIN: 0
                     case(SYNC_ACK): //Expect to be in SYNC_SENT state, otherwise unknown behavior.
@@ -1117,7 +1125,7 @@ implementation{
                 dbg(TRANSPORT_CHANNEL, "ERROR: No intent for SUTD.\n");
                 break;
             case(FIN):
-                if(socket.state == WAIT_ACKFIN || socket.state == CLOSED){ 
+                if(socket.state == WAIT_ACKFIN || socket.state == WAIT_ACK || socket.state == CLOSED){ 
                     // dbg(TRANSPORT_CHANNEL, "WARNING (timeout): FIN unfulfilled (state: %s | expires in: %d).\n", getPrinted(socket.state, TRUE), (ts.expiration - call timeoutTimer.getNow()));
                     return TRUE; }
                 break;
