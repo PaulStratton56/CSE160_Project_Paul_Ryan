@@ -293,7 +293,7 @@ implementation{
                 call sockets.insert(ts.id,socket);
 
                 //Signal the connection is ready to use.
-                signal TinyController.connected(ts.id);
+                signal TinyController.connected(ts.id, call ports.get(socket.srcPort));
                 
                 dbg(TRANSPORT_CHANNEL, "INFO (setup): Socket %d Ready to send.\n",ts.id);
             }
@@ -325,8 +325,8 @@ implementation{
             //Grab some of the variables from the headers for ease of access later.
             uint8_t incomingFlags = (incomingMsg.flagsandsize & 224)>>5;
             uint8_t incomingSize = incomingMsg.flagsandsize & 31;
-            uint8_t incomingSrcPort = ((incomingMsg.ports) & 240)>>4;
-            uint8_t incomingDestPort = (incomingMsg.ports) & 15;
+            uint8_t incomingDestPort = ((incomingMsg.ports) & 240)>>4;
+            uint8_t incomingSrcPort = (incomingMsg.ports) & 15;
             uint32_t socketID = getSocketID(incomingMsg.src, incomingSrcPort, incomingDestPort);
             
             //Log the incoming pack.
@@ -360,7 +360,6 @@ implementation{
                                     if(socket.nextExpected%SOCKET_BUFFER_SIZE+incomingSize<SOCKET_BUFFER_SIZE){
                                         memcpy(&(socket.recvBuff[socket.nextExpected%SOCKET_BUFFER_SIZE]),incomingMsg.data,incomingSize);
                                         // dbg(TRANSPORT_CHANNEL, "INFO (buffer): Copied [%d, %d) (%d bytes). Buffer:\n", incomingMsg.currbyte%SOCKET_BUFFER_SIZE, (incomingMsg.currbyte+incomingSize)%SOCKET_BUFFER_SIZE, incomingSize);
-                                        // printBuffer(socket.recvBuff, SOCKET_BUFFER_SIZE);
                                     }
                                     else{//Copying requires a buffer wraparound
                                         //Calculate the remaining bytes that do not fit in the remaining buffer before wrap.
@@ -424,7 +423,7 @@ implementation{
                                 dbg(TRANSPORT_CHANNEL,"INFO (setup): SYNC_ACK ACKED, Socket %d CONNECTED, nextExpected: %d\n",socketID, socket.nextExpected%SOCKET_BUFFER_SIZE);
 
                                 //Signal that data is inbound.
-                                signal TinyController.connected(socketID);
+                                signal TinyController.connected(socketID, call ports.get(socket.srcPort));
                                 break;
                             //If connected, then could be ACKing data. Must update window.
                             case(CONNECTED):
@@ -746,7 +745,7 @@ implementation{
         Writes a given payload to a socket's sendBuffer, after checking for certain edge cases.
         (Does the socket exist, is there room in the buffer to write this, etc.)
         Called when an application with an existing connection has permission to write to a socket and wishes to do so. */
-    command error_t TinyController.write(uint32_t socketID, uint8_t* payload, uint8_t length){
+    command uint8_t TinyController.write(uint32_t socketID, uint8_t* payload, uint8_t length){
         socket_store_t socket;
         //Check to see if the socket exists
         if(call sockets.contains(socketID)){
@@ -754,45 +753,51 @@ implementation{
             socket = call sockets.get(socketID);
             //If the socket is connected and ready to send data,
             if(socket.state == CONNECTED){
-                //If there is room in the buffer to write the whole payload to (or the buffer is empty), then it is possible to write.
-                if(((byteCount_t)(socket.lastAcked-socket.nextToWrite))%SOCKET_BUFFER_SIZE>=length || socket.lastAcked==socket.nextToWrite){
-                    //If the memory written to does not include a wraparound, write directly.
-                    if(socket.nextToWrite%SOCKET_BUFFER_SIZE+length<SOCKET_BUFFER_SIZE){
-                        memcpy(&(socket.sendBuff[socket.nextToWrite%SOCKET_BUFFER_SIZE]),payload,length);
-                    }
-                    else{//Writing requires a wraparound
-                        //Consider the excess bytes that must be wrapped back to the beginning, then write at the end and start.
-                        uint8_t overflow = socket.nextToWrite%SOCKET_BUFFER_SIZE+length-SOCKET_BUFFER_SIZE;
-                        memcpy(&(socket.sendBuff[socket.nextToWrite%SOCKET_BUFFER_SIZE]),payload,length-overflow);
-                        memcpy(&(socket.sendBuff[0]),payload+length-overflow,overflow);
-                    }
-                    //Update the socket pointers with this new information.
-                    socket.nextToWrite+=length;
-                    call sockets.insert(socketID,socket);
-
-                    //Enqueue this new data for sending.
-                    call sendQueue.enqueue(socketID);
-                    post sendData();
-
-                    //Print the result of writing.
-                    dbg(TRANSPORT_CHANNEL, "INFO (buffer): Wrote %d bytes. Buffer:\n", length);
-                    printBuffer(socket.sendBuff, SOCKET_BUFFER_SIZE);
-
-                    return SUCCESS;
+                //If the buffer is full, return 0.
+                if((byteCount_t)(socket.lastAcked - socket.nextToWrite) == SOCKET_BUFFER_SIZE){ 
+                    dbg(TRANSPORT_CHANNEL, "WARNING (write): Buffer is full. Cannot write.\n");
+                    return 0; 
                 }
-                else{ //Not enough room in the current buffer to write the payload to.
-                    dbg(TRANSPORT_CHANNEL,"ERROR: Not enough room in sendBuffer. INFO: lastAcked: %d | nextToWrite: %d | room: %d | length: %d\n",socket.lastAcked,socket.nextToWrite,((byteCount_t)(socket.lastAcked-socket.nextToWrite))%SOCKET_BUFFER_SIZE,length);
-                    return FAIL;
+                if(length>SOCKET_BUFFER_SIZE){
+                    length=SOCKET_BUFFER_SIZE;
                 }
+                //Buffer is not full, take minimum between length and size.
+                if(length > (byteCount_t)(socket.lastAcked-socket.nextToWrite)%SOCKET_BUFFER_SIZE && socket.lastAcked != socket.nextToWrite){
+                        length = (byteCount_t)(socket.lastAcked-socket.nextToWrite)%SOCKET_BUFFER_SIZE;
+                }
+
+                //If the memory written to does not include a wraparound, write directly.
+                if(socket.nextToWrite%SOCKET_BUFFER_SIZE+length<SOCKET_BUFFER_SIZE){
+                    memcpy(&(socket.sendBuff[socket.nextToWrite%SOCKET_BUFFER_SIZE]),payload,length);
+                }
+                else{//Writing requires a wraparound
+                    //Consider the excess bytes that must be wrapped back to the beginning, then write at the end and start.
+                    uint8_t overflow = socket.nextToWrite%SOCKET_BUFFER_SIZE+length-SOCKET_BUFFER_SIZE;
+                    memcpy(&(socket.sendBuff[socket.nextToWrite%SOCKET_BUFFER_SIZE]),payload,length-overflow);
+                    memcpy(&(socket.sendBuff[0]),payload+length-overflow,overflow);
+                }
+                //Update the socket pointers with this new information.
+                socket.nextToWrite+=length;
+                call sockets.insert(socketID,socket);
+
+                //Enqueue this new data for sending.
+                call sendQueue.enqueue(socketID);
+                post sendData();
+
+                //Print the result of writing.
+                dbg(TRANSPORT_CHANNEL, "INFO (buffer): Wrote %d bytes. Buffer:\n", length);
+                printBuffer(socket.sendBuff, SOCKET_BUFFER_SIZE);
+
+                return length;
             }
             else{ //Socket is not connected, and therefore cannot send.
                 dbg(TRANSPORT_CHANNEL,"ERROR: Socket %d not connected.\n",socketID,socket.state);
-                return FAIL;
+                return 0;
             }
         }
         else{ //Socket was not found under the given socketID
             dbg(TRANSPORT_CHANNEL,"ERROR: No Socket %d.\n",socketID);
-            return FAIL;
+            return 0;
         }
 
     }

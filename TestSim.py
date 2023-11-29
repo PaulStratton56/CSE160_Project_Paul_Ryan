@@ -16,6 +16,8 @@ class TestSim:
     CMD_ROUTE = 10
     CMD_CONNECT = 11
     CMD_DISCONNECT = 12
+    CMD_TEST_CLIENT = 4
+    CMD_TEST_SERVER = 5
     CMD_FLOOD = 31
     
     # CHANNELS - see includes/channels.h
@@ -32,6 +34,7 @@ class TestSim:
     LSP_CHANNEL="lsps"
     # Project 3
     TRANSPORT_CHANNEL="transport"
+    TESTCONNECTION_CHANNEL = "testconnection"
 
     # Personal Debuggin Channels for some of the additional models implemented.
     HASHMAP_CHANNEL="hashmap"
@@ -133,6 +136,12 @@ class TestSim:
     
     def disconnect(self, source, dest):
         self.sendCMD(self.CMD_DISCONNECT, source, "{0}{1}".format(chr(dest),""))
+
+    def testServer(self, source, port, byteNum):
+        self.sendCMD(self.CMD_TEST_SERVER, source, "{0}{1}".format(chr(port), chr(byteNum)))
+
+    def testClient(self, source, srcPort, dest, destPort, byteNum):
+        self.sendCMD(self.CMD_TEST_CLIENT, source, "{0}{1}{2}{3}".format(chr(srcPort),chr(dest),chr(destPort),chr(byteNum)))
 
     def flood(self,source,msg):
         self.sendCMD(self.CMD_FLOOD,source,"{0}{1}".format(chr(source),msg))

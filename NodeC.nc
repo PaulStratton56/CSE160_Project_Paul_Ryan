@@ -51,4 +51,7 @@ implementation {
 
     components convoC;
     Node.convo -> convoC;
+
+    components testConnectorC;
+    Node.testConnector -> testConnectorC;
 }

@@ -29,7 +29,7 @@ module Node{
    uses interface TinyController as TCP;
    uses interface PacketHandler;
    uses interface convo;
-
+   uses interface testConnector;
 
    uses interface CommandHandler;
 }
@@ -49,7 +49,7 @@ implementation{
          //When done booting, start the ND Ping timer.
          call nd.onBoot();
          call Wayfinder.onBoot();
-         call convo.onBoot();
+         // call convo.onBoot();
          // call TCP.getPort(1,69);
 
       }else{
@@ -116,9 +116,16 @@ implementation{
 
    event void CommandHandler.printDistanceVector(){}
 
-   event void CommandHandler.setTestServer(){}
+   event void CommandHandler.setTestServer(uint8_t port, uint8_t bytes){
+      dbg(GENERAL_CHANNEL, "TEST_SERVER EVENT\n");
+      call testConnector.createServer(port, bytes);
+   }
 
-   event void CommandHandler.setTestClient(){}
+   event void CommandHandler.setTestClient(uint8_t srcPort, uint8_t dest, uint8_t destPort, uint8_t bytes){
+      dbg(GENERAL_CHANNEL, "TEST_CLIENT EVENT\n");
+      call testConnector.createClient(srcPort, dest, destPort, bytes);
+
+   }
 
    event void CommandHandler.setAppServer(){}
 
@@ -126,7 +133,7 @@ implementation{
 
    event void router.gotTCP(uint8_t* _){}
 
-   event void TCP.connected(uint32_t _){}
+   event void TCP.connected(uint32_t _, uint8_t __){}
    event void TCP.gotData(uint32_t _,uint8_t __){}
    event void TCP.closing(uint32_t _){}
 }
