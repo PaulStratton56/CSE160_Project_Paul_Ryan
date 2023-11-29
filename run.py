@@ -11,7 +11,7 @@ def main():
     s.loadTopo("tuna-melt.topo")
 
     # Add a noise model to all of the motes.
-    s.loadNoise("no_noise.txt")
+    s.loadNoise("meyer-heavy.txt")
 
     # Turn on all of the sensors.
     s.bootAll()

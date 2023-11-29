@@ -8,4 +8,5 @@ interface TinyController{
     event void connected(uint32_t socketID, uint8_t sourcePTL);
     event void gotData(uint32_t socketID, uint8_t length);
     event void closing(uint32_t IDtoClose);
+    event void wtf(uint32_t socketID);
 }

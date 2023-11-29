@@ -136,4 +136,5 @@ implementation{
    event void TCP.connected(uint32_t _, uint8_t __){}
    event void TCP.gotData(uint32_t _,uint8_t __){}
    event void TCP.closing(uint32_t _){}
+   event void TCP.wtf(uint32_t _){}
 }

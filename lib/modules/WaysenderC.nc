@@ -13,6 +13,7 @@ implementation{
    components PacketHandlerC as PacketHandler;
    WaysenderP.PacketHandler -> PacketHandler;
 
-    components new TimerMilliC() as t;
-    WaysenderP.t -> t;
+   components new QueueC(wspack,128) as packets;
+   WaysenderP.packets -> packets;
+
 }

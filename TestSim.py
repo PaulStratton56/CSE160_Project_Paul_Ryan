@@ -162,7 +162,7 @@ class TestSim:
 
 def main():
     s = TestSim()
-
+    s.runTime(1)
     # s.loadTopo("long_line.topo")
     # s.loadTopo("smalltopo.topo")
     # s.loadTopo("tiny.topo")
@@ -174,9 +174,11 @@ def main():
     # s.loadTopo("pizza.topo")
     # s.loadTopo("star.topo")
 
-    s.loadNoise("no_noise.txt")
+    # s.loadNoise("no_noise.txt")
+    # s.loadNoise("some_noise.txt")
+    s.loadNoise("meyer-heavy.txt")
     
-    s.addChannel(s.GENERAL_CHANNEL)
+    # s.addChannel(s.GENERAL_CHANNEL)
     # s.addChannel(s.NEIGHBOR_CHANNEL)
     # s.addChannel(s.FLOODING_CHANNEL)
     # s.addChannel(s.ROUTING_CHANNEL)                                                
@@ -186,7 +188,7 @@ def main():
     s.bootAll()
     
     # '''=== TINYCONTROLLER SIM ==='''
-    s.runTime(300)
+    s.runTime(256)
 
     # s.connect(1,2)
 
@@ -202,11 +204,27 @@ def main():
 
 
     '''=== DEBUGGING SIM ==='''
-    # x=4
-    # y=21
+    # x=9
+    # y=23
     # print "\n================================================\n                ROUTING:", x ,"-->",y,"               \n================================================\n" 
     # s.route(x,y,"x->y")
-    # s.runTime(16)
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(y,x,"y->x")
+    # s.runTime(64)
     
     # print "\n================================================\n                ROUTING:",x,"--> 1                \n================================================\n"
     # s.route(x,1,"x->1")

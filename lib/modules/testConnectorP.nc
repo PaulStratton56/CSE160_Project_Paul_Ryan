@@ -64,24 +64,23 @@ implementation{
         if(socketID == serverID){
             uint8_t i;
             call tc.read(socketID, size, readBytes);
-            dbg(TESTCONNECTION_CHANNEL, "Reading bytes:\n");
+            dbg(TESTCONNECTION_CHANNEL, "Reading %d bytes:\n", size);
             if(size == 14){
                 dbg(TESTCONNECTION_CHANNEL, "Bytes: %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d\n", 
-                readBytes[0],
-                readBytes[1],
-                readBytes[2],
-                readBytes[3],
-                readBytes[4],
-                readBytes[5],
-                readBytes[6],
-                readBytes[7],
-                readBytes[8],
-                readBytes[9],
-                readBytes[10],
-                readBytes[11],
-                readBytes[12],
-                readBytes[13]
-                );
+                    readBytes[0],
+                    readBytes[1],
+                    readBytes[2],
+                    readBytes[3],
+                    readBytes[4],
+                    readBytes[5],
+                    readBytes[6],
+                    readBytes[7],
+                    readBytes[8],
+                    readBytes[9],
+                    readBytes[10],
+                    readBytes[11],
+                    readBytes[12],
+                    readBytes[13]);
             }
             else{
                 for(i = 0; i < size; i++){
@@ -115,5 +114,7 @@ implementation{
         }
 
     }
+
+   event void tc.wtf(uint32_t _){}
 
 }

@@ -58,6 +58,8 @@ typedef struct socket_store_t{
     uint16_t RTT;
     byteCount_t myWindow;
     byteCount_t theirWindow;
+    uint32_t expiration;
+    uint32_t trueSendTime;
 }socket_store_t;
 
 #endif
