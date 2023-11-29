@@ -84,6 +84,8 @@ implementation{
 
             if(socket.state!=CONNECTED){
                 dbg(TRANSPORT_CHANNEL,"ERROR (sendData): Socket %d not in CONNECTED state.\n",socketID);
+                call sendQueue.enqueue(socketID);
+                post sendData();
                 return;
             }
 
@@ -105,13 +107,13 @@ implementation{
                 
                 //Make and send the packet.
                 makeTCPack(&packet, 0, 0, 0, length, socketID, ((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE, socket.nextToSend);
-                call send.send(255,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&packet);
+                call send.send(32,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&packet);
                 dbg(TRANSPORT_CHANNEL,"INFO (transportData): Sent %d bytes: [%d,%d).\n", length, socket.nextToSend%SOCKET_BUFFER_SIZE, (socket.nextToSend+length)%SOCKET_BUFFER_SIZE);
 
                 //Add a retransmission timestamp for the packet, and call the retransmission timer if not in progress.
-                makeTimeStamp(&ts, 2*socket.RTT, socketID, socket.nextToSend, EMPTY);
+                makeTimeStamp(&ts, socket.RTT, socketID, socket.nextToSend, EMPTY);
                 call timeQueue.enqueue(ts);
-                timeoutTime = (call timeQueue.empty()) ? 2*socket.RTT : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
+                timeoutTime = (call timeQueue.empty()) ? socket.RTT : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
                 if(!call timeoutTimer.isRunning()){ call timeoutTimer.startOneShot(timeoutTime); }
 
                 //Update the socket with the new "nextToSend" and effective window.
@@ -234,8 +236,9 @@ implementation{
             }
         }
         //Restart the timer for timeouts.
-        timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
-        call timeoutTimer.startOneShot(timeoutTime);
+        if(!call timeQueue.empty()){
+            call timeoutTimer.startOneShot(((call timeQueue.head()).expiration - call timeoutTimer.getNow()));
+        }
     }
 
     /* == closeSocket ==
@@ -251,6 +254,7 @@ implementation{
                 
                 //Change socket state. Since the socket is closed, don't send data.
                 if(socket.state==CLOSED){
+                    //already closed, do nothing
                     return;
                 }
                 else if(socket.state==CLOSING){
@@ -279,9 +283,12 @@ implementation{
         int i=0;
         timestamp ts;
         uint32_t currentTime = call sendRemoveTimer.getNow();
+        // dbg(TRANSPORT_CHANNEL,"INFO (SR stamps): Checking SR stamps. Q size %d\n",num_queuedSockets);
         for(i=0;i<num_queuedSockets;i++){
+            // dbg(TRANSPORT_CHANNEL,"Checking")
             if(currentTime < (call sendRemoveQueue.head()).expiration){
                 //this isn't expired, so nothing in the queue is expired
+                // dbg(TRANSPORT_CHANNEL,"INFO Not expired yet. currentTime: %d, expiration: %d\n",currentTime,(call sendRemoveQueue.head()).expiration);
                 break;
             }
             ts = call sendRemoveQueue.dequeue();
@@ -298,17 +305,33 @@ implementation{
                 dbg(TRANSPORT_CHANNEL, "INFO (setup): Socket %d Ready to send.\n",ts.id);
             }
             else if(ts.intent==WAIT_FINAL){
-                socket_store_t socket = call sockets.get(ts.id);
-                call sockets.remove(ts.id);
-                dbg(TRANSPORT_CHANNEL, "INFO (socket): removeDelay fired. Removing socket %d to %d. %d remaining sockets.\n", ts.id, socket.dest.addr, call sockets.size());
+                if(call sockets.contains(ts.id)){
+                    socket_store_t socket = call sockets.get(ts.id);
+                    if(ts.expiration>=socket.expiration){
+                        call sockets.remove(ts.id);
+                        dbg(TRANSPORT_CHANNEL, "INFO (removal): removeDelay fired. Removing socket %d to %d. %d remaining sockets.\n", ts.id, socket.dest.addr, call sockets.size());
+                    }
+                    // else{
+                    //     dbg(TRANSPORT_CHANNEL,"Not True expiration yet. expiration: %d, true expiration: %d\n",ts.expiration,socket.expiration);
+                    // }
+                }
+                // else{
+                //     dbg(TRANSPORT_CHANNEL,"WARNING (removal): Socket %d to remove does not exist\n",ts.id);
+                // }
             }
             else if(ts.intent==CLOSING){
                 call IDstoClose.enqueue(ts.id);
+                dbg(TRANSPORT_CHANNEL, "INFO (closing): Socket %d ready to close\n",ts.id);
                 post closeSocket();
             }
             else{
                 dbg(TRANSPORT_CHANNEL,"ERROR (sendRemoveTimer): I don't know how to handle this.\n");
             }
+        }
+        if(!call sendRemoveTimer.isRunning() && call sendRemoveQueue.size()>0){
+            uint32_t expires = (call sendRemoveQueue.head()).expiration;
+            uint32_t current = call sendRemoveTimer.getNow();
+            call sendRemoveTimer.startOneShot(expires-current);
         }
     }
 
@@ -392,7 +415,7 @@ implementation{
                                 makeTCPack(&acker,0,1,0,0,socketID,
                                     ((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE,
                                     noData());
-                                call send.send(255,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&acker);
+                                call send.send(32,socket.dest.addr,PROTOCOL_TCP,(uint8_t*)&acker);
                                 dbg(TRANSPORT_CHANNEL,"INFO (transportData): ACK [%d, %d). nextExpected: %d | window: %d\n", incomingMsg.currbyte%SOCKET_BUFFER_SIZE,(incomingMsg.currbyte+incomingSize)%SOCKET_BUFFER_SIZE,socket.nextExpected%SOCKET_BUFFER_SIZE, (SOCKET_BUFFER_SIZE+socket.nextToRead - socket.nextExpected)%SOCKET_BUFFER_SIZE);
                                 
                                 //Tell the application that data is ready to receive.
@@ -403,7 +426,7 @@ implementation{
                             }
                         }
                         else{ //Unexpected state (not connected).
-                            dbg(TRANSPORT_CHANNEL, "ERROR: EMPTY, state = %s\n", getPrinted(socket.state, TRUE));
+                            dbg(TRANSPORT_CHANNEL, "WARNING: EMPTY, state = %s\n", getPrinted(socket.state, TRUE));
                         }
                         break;
                     //SYNC: 1 | ACK: 0 | FIN: 0
@@ -499,9 +522,11 @@ implementation{
 
                                 {//timestamp scope
                                     timestamp ts;
-                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,WAIT_FINAL);
+                                    makeTimeStamp(&ts,socket.RTT,socketID,0,WAIT_FINAL);
+                                    socket.expiration = call sendRemoveTimer.getNow()+socket.RTT;
+                                    call sockets.insert(socketID, socket);
                                     call sendRemoveQueue.enqueue(ts);
-                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(socket.RTT);
                                 }
                                 dbg(TRANSPORT_CHANNEL, "INFO (teardown): FIN to %d ACKED. State: WAIT_FINAL\n", socket.dest.addr);
                                 
@@ -526,9 +551,9 @@ implementation{
                                 signal TinyController.closing(socketID);
                                 {//timestamp scope
                                     timestamp ts;
-                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,CLOSING);
+                                    makeTimeStamp(&ts,socket.RTT,socketID,0,CLOSING);
                                     call sendRemoveQueue.enqueue(ts);
-                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(socket.RTT);
                                 }
                                 break;
                             //If waiting for an ACK and a FIN before closing, update to only wait for an ACK.
@@ -545,9 +570,11 @@ implementation{
 
                                 {//timestamp scope, removeDelay
                                     timestamp ts;
-                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,WAIT_FINAL);
+                                    makeTimeStamp(&ts,socket.RTT,socketID,0,WAIT_FINAL);
+                                    socket.expiration = call sendRemoveTimer.getNow()+socket.RTT;
+                                    call sockets.insert(socketID, socket);
                                     call sendRemoveQueue.enqueue(ts);
-                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(socket.RTT);
                                 }
                                 break;
                             //If we get another FIN while waiting to remove the socket, restart the timer and send another ACK.
@@ -555,9 +582,11 @@ implementation{
                             case(WAIT_FINAL):
                                 {//timestamp scope, removeDelay
                                     timestamp ts;
-                                    makeTimeStamp(&ts,2*socket.RTT,socketID,0,WAIT_FINAL);
+                                    makeTimeStamp(&ts,socket.RTT,socketID,0,WAIT_FINAL);
+                                    socket.expiration = call sendRemoveTimer.getNow()+socket.RTT;
+                                    call sockets.insert(socketID, socket);
                                     call sendRemoveQueue.enqueue(ts);
-                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                    if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(socket.RTT);
                                 }
                                 socket.nextExpected--;
                                 socket.nextToSend--;
@@ -588,7 +617,9 @@ implementation{
                         call sockets.insert(socketID, socket);
 
                         //Send the ACK.
-                        if(socket.state != WAIT_ACK){ sendSUTD(socketID, ACK); }
+                        if(socket.state != WAIT_ACK){ 
+                            sendSUTD(socketID, ACK); 
+                        }
                         break;
                     //SYNC: 1 | ACK: 1 | FIN: 0
                     case(SYNC_ACK): //Expect to be in SYNC_SENT state, otherwise unknown behavior.
@@ -607,15 +638,22 @@ implementation{
                             //Prepare to send data.
                             {//timestamp scope
                                 timestamp ts;
-                                makeTimeStamp(&ts,2*socket.RTT,socketID,0,CONNECTED);
+                                makeTimeStamp(&ts,socket.RTT,socketID,0,CONNECTED);
                                 call sendRemoveQueue.enqueue(ts);
-                                if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                if(!call sendRemoveTimer.isRunning()){
+                                    call sendRemoveTimer.startOneShot(socket.RTT);
+                                    dbg(TRANSPORT_CHANNEL,"SR Timer is now running. Q size: %d, duration: %d\n",call sendRemoveQueue.size(),socket.RTT);
+                                }
+                                else{
+                                    dbg(TRANSPORT_CHANNEL,"SR Timer is already running\n");
+                                }
                             }
                         }
                         //If we're connected, this is a retransmit. Restart the sendDelay and respond with an ACK.
                         else if(socket.state == CONNECTED){
                             //Respond with an ACK. Previous ACK lost, so decrement sequence.
                             socket.nextToSend--;
+                            socket.lastAcked = incomingMsg.nextbyte;
                             call sockets.insert(socketID, socket);
                             sendSUTD(socketID, ACK);
                             dbg(TRANSPORT_CHANNEL, "WARNING: Retransmitted SYNC_ACK. Restarting sendDelay.\n");
@@ -623,9 +661,9 @@ implementation{
                             //Prepare to send data... again.
                             {//timestamp scope
                                 timestamp ts;
-                                makeTimeStamp(&ts,2*socket.RTT,socketID,0,CONNECTED);
+                                makeTimeStamp(&ts,socket.RTT,socketID,0,CONNECTED);
                                 call sendRemoveQueue.enqueue(ts);
-                                if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(2*socket.RTT);
+                                if(!call sendRemoveTimer.isRunning())call sendRemoveTimer.startOneShot(socket.RTT);
                             }
                         }
                         else{ //unknown behavior
@@ -637,6 +675,11 @@ implementation{
                         dbg(TRANSPORT_CHANNEL, "ACK_FIN received.\n");
                         break;
                     //Unknown Case.
+                    case(SYNC_ACK_FIN):
+                        dbg(TRANSPORT_CHANNEL,"Warning: WTF FLAG. Closing Socket %d to %d and telling app.\n", socketID,incomingMsg.src);
+                        signal TinyController.wtf(socketID);
+                        call sockets.remove(socketID);
+                        break;
                     default:
                         dbg(TRANSPORT_CHANNEL, "ERROR: unknown flag combo: %d. Dropping.\n", incomingFlags);
                         break;
@@ -655,7 +698,15 @@ implementation{
                     printSocket(socketID);
                 }
                 else{
-                    dbg(TRANSPORT_CHANNEL, "Nonsense flags %s OR Empty Port: %d. Dropping.\n",getPrinted(incomingFlags, FALSE),incomingDestPort);
+                    if(incomingFlags!=SYNC_ACK_FIN){
+                        tcpack wtf;
+                        makeTCPack(&wtf,1,1,1,0,socketID,0,noData());
+                        wtf.ports = (uint8_t)((incomingSrcPort<<4) + incomingDestPort);
+                        wtf.src = TOS_NODE_ID;
+                        wtf.dest = incomingMsg.src;
+                        call send.send(32,wtf.dest,PROTOCOL_TCP,(uint8_t*)&wtf);
+                        dbg(TRANSPORT_CHANNEL, "Warning: Unexpectedly flaged packet (%s) to non-existent socket %d from %d. Responding with wtf message.\n",getPrinted(incomingFlags, FALSE),socketID,incomingMsg.src);
+                    }
                 }
             }
             if(call receiveQueue.size()>0){
@@ -941,7 +992,7 @@ implementation{
 
         //Arbitrary RTT, should be dynamic.
         socket->RTT = 4000;
-
+        socket->expiration = call sendRemoveTimer.getNow() + 128000;
         //Initializing, we assume the whole buffer as a window.
         socket->myWindow = SOCKET_BUFFER_SIZE;
         socket->theirWindow = SOCKET_BUFFER_SIZE;
@@ -1061,9 +1112,14 @@ implementation{
         Called when a setup/teardown (SUTD) packet needs to be sent.
         Sends the packet with a given intent along a given socket connection. */
     void sendSUTD(uint32_t socketID, uint8_t intent){
-        socket_store_t socket = call sockets.get(socketID);
         tcpack sutdPack;
         timestamp ts;
+        socket_store_t socket;
+        if(!call sockets.contains(socketID)){
+            dbg(TRANSPORT_CHANNEL,"ERROR (SUTD): Socket %d doesn't exist\n",socketID);
+            return;
+        }
+        socket = call sockets.get(socketID);
 
         //Make the packet according to intent, and send it.
         switch(intent){
@@ -1095,7 +1151,7 @@ implementation{
                 dbg(TRANSPORT_CHANNEL, "ERROR: Unknown intent: %d.\n",intent);
                 break;
         }
-        call send.send(255, socket.dest.addr, PROTOCOL_TCP, (uint8_t*) &sutdPack); 
+        call send.send(32, socket.dest.addr, PROTOCOL_TCP, (uint8_t*) &sutdPack); 
         // dbg(TRANSPORT_CHANNEL, "INFO (transport): Sent TCPack:\n");
         // logTCpack(&sutdPack, TRANSPORT_CHANNEL);
 
@@ -1105,10 +1161,10 @@ implementation{
         call sockets.insert(socketID, socket);
 
         //Add a timestamp for retransmission.
-        makeTimeStamp(&ts, 2*socket.RTT, socketID, socket.nextToSend, intent);
+        makeTimeStamp(&ts, socket.RTT, socketID, socket.nextToSend, intent);
         call timeQueue.enqueue(ts);
         if(!call timeoutTimer.isRunning()){ 
-            timeoutTime = (call timeQueue.empty()) ? 2000 : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
+            timeoutTime = (call timeQueue.empty()) ? socket.RTT : ((call timeQueue.head()).expiration - call timeoutTimer.getNow());
             call timeoutTimer.startOneShot(timeoutTime); 
         }
     }
