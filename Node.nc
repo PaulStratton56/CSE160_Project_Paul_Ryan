@@ -32,6 +32,8 @@ module Node{
    uses interface testConnector;
 
    uses interface CommandHandler;
+   uses interface ChaosClient;
+   uses interface ChaosServer;
 }
 
 implementation{
@@ -131,6 +133,30 @@ implementation{
 
    event void CommandHandler.setAppClient(){}
 
+   event void CommandHandler.host(){
+      call ChaosServer.host();
+   }
+
+   event void CommandHandler.printUsers(uint8_t dest){
+      call ChaosServer.printUsers(dest);
+   }
+
+   event void CommandHandler.hello(uint8_t dest){
+      call ChaosClient.hello(dest);
+   }
+
+   event void CommandHandler.goodbye(uint8_t dest){
+      call ChaosClient.goodbye(dest);
+   }
+
+   event void CommandHandler.whisper(uint8_t dest, uint8_t* payload){
+      call ChaosClient.whisper(dest, payload);
+   }
+
+   event void CommandHandler.chat(uint8_t* payload){
+      call ChaosClient.chat(payload);
+   }
+   
    event void router.gotTCP(uint8_t* _){}
 
    event void TCP.connected(uint32_t _, uint8_t __){}

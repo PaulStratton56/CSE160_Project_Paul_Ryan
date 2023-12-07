@@ -100,6 +100,36 @@ implementation{
                     signal CommandHandler.disconnect(buff[0]);
                     break;
 
+                case CMD_HOST:
+                    dbg(COMMAND_CHANNEL, "Command Type: Host\n");
+                    signal CommandHandler.host();
+                    break;
+                
+                case CMD_PRINT_USERS:
+                    dbg(COMMAND_CHANNEL, "Command Type: Print Users | To: %d\n",buff[0]);
+                    signal CommandHandler.printUsers(buff[0]);
+                    break;
+                
+                case CMD_HELLO:
+                    dbg(COMMAND_CHANNEL, "Command Type: Hello | To: %d\n",buff[0]);
+                    signal CommandHandler.hello(buff[0]);
+                    break;
+                
+                case CMD_GOODBYE:
+                    dbg(COMMAND_CHANNEL, "Command Type: Goodbye | To: %d\n",buff[0]);
+                    signal CommandHandler.goodbye(buff[0]);
+                    break;
+                
+                case CMD_WHISPER:
+                    dbg(COMMAND_CHANNEL, "Command Type: Whisper | To: %d | Payload: %s\n",buff[0],&buff[1]);
+                    signal CommandHandler.whisper(buff[0],&buff[1]);
+                    break;
+
+                case CMD_CHAT:
+                    dbg(COMMAND_CHANNEL, "Command Type: Chat | Payload: %s\n",&buff[0]);
+                    signal CommandHandler.chat(&buff[0]);
+                    break;
+
                 default:
                     dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);
                     break;

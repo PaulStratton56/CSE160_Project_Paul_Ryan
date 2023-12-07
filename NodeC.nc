@@ -54,4 +54,10 @@ implementation {
 
     components testConnectorC;
     Node.testConnector -> testConnectorC;
+
+    components ChaosClientC;
+    Node.ChaosClient -> ChaosClientC;
+
+    components ChaosServerC;
+    Node.ChaosServer -> ChaosServerC;
 }

@@ -18,6 +18,12 @@ class TestSim:
     CMD_DISCONNECT = 12
     CMD_TEST_CLIENT = 4
     CMD_TEST_SERVER = 5
+    CMD_HOST = 13
+    CMD_HELLO = 14
+    CMD_GOODBYE = 15
+    CMD_WHISPER = 16
+    CMD_CHAT = 17
+    CMD_PRINT_USERS = 18
     CMD_FLOOD = 31
     
     # CHANNELS - see includes/channels.h
@@ -136,6 +142,24 @@ class TestSim:
     
     def disconnect(self, source, dest):
         self.sendCMD(self.CMD_DISCONNECT, source, "{0}{1}".format(chr(dest),""))
+
+    def host(self, server):
+        self.sendCMD(self.CMD_HOST, server, "")
+
+    def printUsers(self, client, server):
+        self.sendCMD(self.CMD_PRINT_USERS, client, "{0}".format(chr(server)))
+
+    def hello(self, source, dest):
+        self.sendCMD(self.CMD_HELLO, source, "{0}".format(chr(dest)))
+
+    def goodbye(self, source, dest):
+        self.sendCMD(self.CMD_GOODBYE, source, "{0}".format(chr(dest)))
+
+    def whisper(self, source, dest, msg):
+        self.sendCMD(self.CMD_WHISPER, source, "{0}{1}".format(chr(dest),msg))
+
+    def chat(self, source, msg):
+        self.sendCMD(self.CMD_CHAT, source, "{0}".format(msg))
 
     def testServer(self, source, port, byteNum):
         self.sendCMD(self.CMD_TEST_SERVER, source, "{0}{1}".format(chr(port), chr(byteNum)))
