@@ -16,6 +16,8 @@ class TestSim:
     CMD_ROUTE = 10
     CMD_CONNECT = 11
     CMD_DISCONNECT = 12
+    CMD_TEST_CLIENT = 4
+    CMD_TEST_SERVER = 5
     CMD_FLOOD = 31
     
     # CHANNELS - see includes/channels.h
@@ -32,6 +34,7 @@ class TestSim:
     LSP_CHANNEL="lsps"
     # Project 3
     TRANSPORT_CHANNEL="transport"
+    TESTCONNECTION_CHANNEL = "testconnection"
 
     # Personal Debuggin Channels for some of the additional models implemented.
     HASHMAP_CHANNEL="hashmap"
@@ -134,6 +137,12 @@ class TestSim:
     def disconnect(self, source, dest):
         self.sendCMD(self.CMD_DISCONNECT, source, "{0}{1}".format(chr(dest),""))
 
+    def testServer(self, source, port, byteNum):
+        self.sendCMD(self.CMD_TEST_SERVER, source, "{0}{1}".format(chr(port), chr(byteNum)))
+
+    def testClient(self, source, srcPort, dest, destPort, byteNum):
+        self.sendCMD(self.CMD_TEST_CLIENT, source, "{0}{1}{2}{3}".format(chr(srcPort),chr(dest),chr(destPort),chr(byteNum)))
+
     def flood(self,source,msg):
         self.sendCMD(self.CMD_FLOOD,source,"{0}{1}".format(chr(source),msg))
     
@@ -153,55 +162,69 @@ class TestSim:
 
 def main():
     s = TestSim()
-
+    s.runTime(1)
     # s.loadTopo("long_line.topo")
     # s.loadTopo("smalltopo.topo")
     # s.loadTopo("tiny.topo")
     # s.loadTopo("example.topo")
     # s.loadTopo("circle.topo")
     s.loadTopo("tuna-melt.topo")
+    # s.loadTopo("covid.topo")
     # s.loadTopo("dense.topo")
     # s.loadTopo("pizza.topo")
     # s.loadTopo("star.topo")
 
-    s.loadNoise("no_noise.txt")
+    # s.loadNoise("no_noise.txt")
+    # s.loadNoise("some_noise.txt")
+    s.loadNoise("meyer-heavy.txt")
     
-    # s.addChannel(s.COMMAND_CHANNEL)    
-    # s.addChannel(s.NEIGHBOR_CHANNEL)
-    # s.addChannel(s.COMMAND_CHANNEL)
     # s.addChannel(s.GENERAL_CHANNEL)
-    s.addChannel(s.TRANSPORT_CHANNEL)
-    # s.addChannel(s.ROUTING_CHANNEL)                                            
+    # s.addChannel(s.NEIGHBOR_CHANNEL)
     # s.addChannel(s.FLOODING_CHANNEL)
     # s.addChannel(s.ROUTING_CHANNEL)                                                
-    # s.addChannel(s.NEIGHBOR_CHANNEL)
-    # s.addChannel(s.GENERAL_CHANNEL)
     # s.addChannel(s.LSP_CHANNEL)
+    s.addChannel(s.TRANSPORT_CHANNEL)
     
     s.bootAll()
     
-    '''=== TINYCONTROLLER SIM ==='''
-    s.runTime(32)
+    # '''=== TINYCONTROLLER SIM ==='''
+    s.runTime(256)
 
-    s.connect(1,2)
+    # s.connect(1,2)
 
-    s.runTime(50)
+    # s.runTime(64)
 
-    s.connect(2,9)
+    # s.connect(2,9)
 
-    s.runTime(50)
+    # s.runTime(64)
 
-    s.disconnect(1,2)
+    # s.disconnect(1,2)
 
-    s.runTime(500)
+    # s.runTime(64)
 
 
     '''=== DEBUGGING SIM ==='''
-    # x=1
-    # y=21
+    # x=9
+    # y=23
     # print "\n================================================\n                ROUTING:", x ,"-->",y,"               \n================================================\n" 
     # s.route(x,y,"x->y")
-    # s.runTime(4)
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(x,y,"x->y")
+    # s.runTime(1)
+    # s.route(y,x,"y->x")
+    # s.runTime(64)
     
     # print "\n================================================\n                ROUTING:",x,"--> 1                \n================================================\n"
     # s.route(x,1,"x->1")

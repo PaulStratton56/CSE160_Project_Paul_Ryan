@@ -43,7 +43,7 @@ interface Transport{
    /**
     * Checks to see if there are socket connections to connect to and
     * if there is one, connect to it.
-    * @param
+    * @paramk
     *    socket_t fd: file descriptor that is associated with the socket
     *       that is attempting an accept. remember, only do on listen. 
     * @side Server

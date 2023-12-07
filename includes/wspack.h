@@ -6,7 +6,7 @@
 enum{
 	ws_header_len = 4,
 	ws_pkt_len = pkt_max_pld_len,
-	ws_max_pld_len = ws_pkt_len - ws_header_len
+	ws_max_pld_len = ws_pkt_len - ws_header_len //21
 };
 
 /* == wspack ==

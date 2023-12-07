@@ -65,7 +65,7 @@ implementation{
                         if(!call routingTable.contains(i) || potentialQuality > (call routingTable.get(i)).quality){          //if found a better way
                             call unexplored.insertPair(i,potentialQuality);                 //add it to the heap to explore from later
 
-                            temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;
+                            temp.neighbor = (call routingTable.get(current.neighbor)).neighbor;         //copy the way we're getting to here
                             temp.quality = potentialQuality;
                             call routingTable.insert(i,temp);                               //update routing table with better path found
                         }
@@ -121,7 +121,7 @@ implementation{
             }
             // dbg(LSP_CHANNEL,"Adding connection (%d,%d,%d)\n",data->src,data->pairs[i],data->pairs[i+1]);
             // if(data->pairs[i+1]<255)dbg(LSP_CHANNEL,"Quality %d between %d and %d\n",data->pairs[i+1],data->src,data->pairs[i]);
-            topoTable[data->src][data->pairs[i]] = (float)data->pairs[i+1]/255;
+            topoTable[data->src][data->pairs[i]] = .75;//(float)data->pairs[i+1]/255;
             if(!call existenceTable.contains(data->pairs[i])){
                 call existenceTable.insert(data->pairs[i],FALSE);
             }

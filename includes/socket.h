@@ -34,6 +34,7 @@ typedef nx_struct socket_addr_t{
 
 // File descripter id. Each id is associated with a socket_store_t
 typedef uint8_t socket_t;
+typedef uint8_t byteCount_t;
 
 // State of a socket. 
 typedef struct socket_store_t{
@@ -44,20 +45,21 @@ typedef struct socket_store_t{
 
     // This is the sender portion.
     uint8_t sendBuff[SOCKET_BUFFER_SIZE];
-    uint8_t nextToWrite; //Index of last written byte to sendbuff
-    uint8_t lastAcked; //Index of the last Acked byte in the sendbuff
-    uint8_t nextToSend; //Index of the last sent byte in sendbuff
-    uint16_t seq;
+    byteCount_t nextToWrite; //Index of last written byte to sendbuff
+    byteCount_t lastAcked; //Index of the last Acked byte in the sendbuff
+    byteCount_t nextToSend; //Index of the last sent byte in sendbuff
 
     // This is the receiver portion
     uint8_t recvBuff[SOCKET_BUFFER_SIZE];
-    uint8_t nextToRead; //Index of the last byte read from rcvdbuff
-    uint8_t lastRecv; //Index of the last received byte in rcvdbuff
-    uint8_t nextExpected; //Index of the next expected byte for rcvdbuff
-    uint16_t seqToRecv;
+    byteCount_t nextToRead; //Index of the last byte read from rcvdbuff
+    byteCount_t lastRecv; //Index of the last received byte in rcvdbuff
+    byteCount_t nextExpected; //Index of the next expected byte for rcvdbuff
 
     uint16_t RTT;
-    uint8_t effectiveWindow;
+    byteCount_t myWindow;
+    byteCount_t theirWindow;
+    uint32_t expiration;
+    uint32_t trueSendTime;
 }socket_store_t;
 
 #endif

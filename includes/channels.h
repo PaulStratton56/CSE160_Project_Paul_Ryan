@@ -16,6 +16,7 @@ char ROUTING_CHANNEL[]="routing";
 char LSP_CHANNEL[]="lsps";
 // Project 3
 char TRANSPORT_CHANNEL[]="transport";
+char TESTCONNECTION_CHANNEL[] = "testconnection";
 
 // Personal Debuggin Channels for some of the additional models implemented.
 char HASHMAP_CHANNEL[]="hashmap";

@@ -68,14 +68,14 @@ implementation{
                     signal CommandHandler.printRouteTable();
                     break;
 
-                case CMD_TEST_CLIENT:
-                    dbg(COMMAND_CHANNEL, "Command Type: Client\n");
-                    signal CommandHandler.setTestClient();
+                case CMD_TEST_SERVER:
+                    dbg(COMMAND_CHANNEL, "Command Type: Test Server | Port: %d\n",buff[0]);
+                    signal CommandHandler.setTestServer(buff[0], buff[1]);
                     break;
 
-                case CMD_TEST_SERVER:
-                    dbg(COMMAND_CHANNEL, "Command Type: Client\n");
-                    signal CommandHandler.setTestServer();
+                case CMD_TEST_CLIENT:
+                    dbg(COMMAND_CHANNEL, "Command Type: Test Client | srcPort: %d | dest: %d | destPort: %d | bytes: %d\n",buff[0],buff[1],buff[2],buff[3]);
+                    signal CommandHandler.setTestClient(buff[0],buff[1],buff[2],buff[3]);
                     break;
                     
                 //A flood will only need a given string as a payload, since it broadcasts first.

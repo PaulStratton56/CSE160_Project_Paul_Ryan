@@ -18,8 +18,8 @@ implementation{
     void swap(uint16_t a, uint16_t b){
         nqPair temp;
         assignNQP(&temp,data[a]);
-        assignNQP(&data[a],data[b]);
-        assignNQP(&data[b],temp);
+        assignNQP(&(data[a]),data[b]);
+        assignNQP(&(data[b]),temp);
     }
  
     // fixheapDown: Given an index, swap with lower elements until heap is fixed. 

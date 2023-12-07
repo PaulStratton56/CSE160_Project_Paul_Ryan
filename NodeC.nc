@@ -48,4 +48,10 @@ implementation {
 
     components floodingC;
     Node.flood -> floodingC;
+
+    components convoC;
+    Node.convo -> convoC;
+
+    components testConnectorC;
+    Node.testConnector -> testConnectorC;
 }
