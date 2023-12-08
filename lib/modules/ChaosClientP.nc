@@ -174,7 +174,7 @@ implementation{
                         fullIncomingLength = incomingMail[1] + 2;
                         break;
                     case(WHISPER_INSTRUCTION):
-                        fullIncomingLength = incomingMail[2] + incomingMail[1] + 3;
+                        fullIncomingLength = 3 + incomingMail[1] + incomingMail[2];
                         break;
                     case(LIST_USERS_INSTRUCTION):
                         fullIncomingLength = incomingMail[1] + 2;
@@ -192,7 +192,7 @@ implementation{
                 memset(&(incomingMail[0]), 0, 256);
             }
             else{
-                dbg(CHAOS_CLIENT_CHANNEL, "Still missing %d bytes!!!\n", (fullIncomingLength-receivedUntil));
+                dbg(CHAOS_CLIENT_CHANNEL, "Still missing %d bytes. Expecting %d, have %d!!!\n", (fullIncomingLength-receivedUntil),fullIncomingLength,receivedUntil);
             }
         }
     }

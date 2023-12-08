@@ -55,7 +55,7 @@ implementation{
                     u.lastInstruction = peekBuffer[0];
                     u.bytesLeft = 1
                                 + (u.lastInstruction!=LIST_USERS_INSTRUCTION)
-                                + (u.lastInstruction==HELLO_INSTRUCTION)
+                                + (u.lastInstruction==HELLO_INSTRUCTION || u.lastInstruction==WHISPER_INSTRUCTION)
                                 + peekBuffer[1]*(u.lastInstruction!=LIST_USERS_INSTRUCTION) 
                                 + peekBuffer[2]*(u.lastInstruction==WHISPER_INSTRUCTION);
                     // dbg(CHAOS_SERVER_CHANNEL,"Peeking at [%d|%d|%d]\n",peekBuffer[0],peekBuffer[1],peekBuffer[2]);
@@ -98,7 +98,7 @@ implementation{
                             sid = call users.getIndex(i);
                             e = call tc.write(sid,&(readBuffer[0]),byteCount);
                             if(e!=byteCount){
-                                dbg(TRANSPORT_CHANNEL,"Write Problems in Chat Instruction\n");
+                                dbg(CHAOS_SERVER_CHANNEL,"Write Problems in Chat Instruction\n");
                             }
                         }
                         dbg(CHAOS_SERVER_CHANNEL,"Sending chat to all clients\n");
@@ -112,11 +112,11 @@ implementation{
                         call tc.read(socketID,byteCount,&(readBuffer[0]));
                         e = call tc.write(u.whisperSocketID,&(readBuffer[0]),byteCount);
                         if(e!=byteCount){
-                            dbg(TRANSPORT_CHANNEL,"Write Problems in Whisper Instruction\n");
+                            dbg(CHAOS_SERVER_CHANNEL,"Write Problems in Whisper Instruction\n");
                         }
-                        // else{
-                            // dbg(CHAOS_SERVER_CHANNEL,"Whispering %d bytes to %s\n",byteCount,&((call users.get(u.whisperSocketID)).username[0]));
-                        // }
+                        else{
+                            dbg(CHAOS_SERVER_CHANNEL,"Whispering %d bytes to %s\n",byteCount,&((call users.get(u.whisperSocketID)).username[0]));
+                        }
                         u.bytesLeft-=byteCount;
                         break;
                     case GOODBYE_INSTRUCTION:
@@ -137,16 +137,19 @@ implementation{
                             otherUser = call users.get(sid);
                             usernamesLength+=(otherUser.usernameLength+1);
                         }
-                        pUsername[0]=usernamesLength;
+                        pUsername[0]=LIST_USERS_INSTRUCTION;
+                        pUsername[1]=usernamesLength;
+                        dbg(CHAOS_SERVER_CHANNEL,"Listing Users: %d users, total length: %d\n",num_users,pUsername[1]);
                         for(i=0;i<num_users;i++){
                             sid = call users.getIndex(i);
                             otherUser = call users.get(sid);
-                            memset(pUsername,0,16);
-                            memcpy(pUsername,&(otherUser.username[i==0]),otherUser.usernameLength);
-                            pUsername[(i==0)+otherUser.usernameLength] = '\n';
-                            e = call tc.write(socketID,pUsername,otherUser.usernameLength+(i==0));
-                            if(e!=otherUser.usernameLength){
-                                dbg(TRANSPORT_CHANNEL,"Write Problems in List Instruction\n");
+                            memset(&(pUsername[2*(i==0)]),0,16);
+                            memcpy(&(pUsername[2*(i==0)]),&(otherUser.username[0]),otherUser.usernameLength);
+                            pUsername[2*(i==0)+otherUser.usernameLength+1] = '\n';
+                            dbg(CHAOS_SERVER_CHANNEL,"Node %d| username:%s, usernameLength(\\n):%d\n",(uint8_t)sid,otherUser.username,otherUser.usernameLength+1);
+                            e = call tc.write(socketID,&(pUsername[0]),2*(i==0)+otherUser.usernameLength+1);
+                            if(e!=2*(i==0)+otherUser.usernameLength+1){
+                                dbg(CHAOS_SERVER_CHANNEL,"Write Problems in List Instruction\n");
                             }
                         }
                         u.bytesLeft=0;
@@ -177,6 +180,7 @@ implementation{
                     }
                     else{
                         dbg(CHAOS_SERVER_CHANNEL,"Welcome to the Server %s\n",u.username);
+                        u.usernameLength = readBuffer[1];
                         call sockets.insert(userkey,socketID);
                         call users.insert(socketID,u);
                     }

@@ -38,6 +38,8 @@ def main():
     s.whisper(7,23,"Gand","Hi G!")
     s.runTime(20)
     
+    s.printUsers(16,1)
+    s.runTime(20)
     
     s.goodbye(16,1)
     s.runTime(20)
