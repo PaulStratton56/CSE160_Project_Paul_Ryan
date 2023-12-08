@@ -149,8 +149,8 @@ implementation{
       call ChaosClient.goodbye(dest);
    }
 
-   event void CommandHandler.whisper(uint8_t dest, uint8_t msgLen, uint8_t* payload, uint8_t userLen){
-      call ChaosClient.whisper(dest, msgLen, payload, userLen);
+   event void CommandHandler.whisper(uint8_t dest, uint8_t userLen, uint8_t msgLen, uint8_t* payload){
+      call ChaosClient.whisper(dest, userLen, msgLen, payload);
    }
 
    event void CommandHandler.chat(uint8_t* payload, uint8_t msgLen){

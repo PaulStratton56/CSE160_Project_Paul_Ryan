@@ -122,8 +122,8 @@ implementation{
                 
                 case CMD_WHISPER:
                     //0: dest 1: mLen 2: uLen 3: pld
-                    dbg(COMMAND_CHANNEL, "Command Type: Whisper | To: %d | ULen: %d | MLen: %d | Payload: %s\n",buff[0],buff[2],buff[1],&buff[3]);
-                    signal CommandHandler.whisper(buff[0],buff[1],&buff[3],buff[2]);
+                    dbg(COMMAND_CHANNEL, "Command Type: Whisper | To: %d | ULen: %d | MLen: %d | Payload: %s\n",buff[0],buff[1],buff[2],&buff[3]);
+                    signal CommandHandler.whisper(buff[0],buff[1],buff[2],&buff[3]);
                     break;
 
                 case CMD_CHAT:

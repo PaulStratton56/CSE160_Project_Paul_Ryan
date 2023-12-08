@@ -9,7 +9,7 @@ interface CommandHandler{
    event void printUsers(uint8_t dest);
    event void hello(uint8_t dest, uint8_t* username, uint8_t userLength);
    event void goodbye(uint8_t dest);
-   event void whisper(uint8_t dest, uint8_t msgLen, uint8_t* payload, uint8_t userLen);
+   event void whisper(uint8_t dest, uint8_t userLen, uint8_t msgLen, uint8_t* payload);
    event void chat(uint8_t* payload, uint8_t msgLen);
    event void printNeighbors();
    event void printRouteTable();

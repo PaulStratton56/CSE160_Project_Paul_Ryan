@@ -126,7 +126,6 @@ implementation{
                 //If data can still be sent (and there is more to send), requeue to send more.
                 if(socket.myWindow > 0 && socket.theirWindow > 0 && (socket.nextToWrite != socket.nextToSend)){
                     call sendQueue.enqueue(socketID);
-                    post sendData();
                     // dbg(TRANSPORT_CHANNEL, "INFO (window): Reposting; more to send. window: %d | left: %d\n", socket.myWindow, (byteCount_t)(socket.nextToWrite-socket.nextToSend));
                 }
                 else{
@@ -137,7 +136,9 @@ implementation{
                     }
                     dbg(TRANSPORT_CHANNEL, "WARNING (window): Cannot send more. mywindow: %d | theirwindow: %d | left: %d | NTW: %d | NTS: %d\n", socket.myWindow, socket.theirWindow, (byteCount_t)(socket.nextToWrite-socket.nextToSend), socket.nextToWrite, socket.nextToSend);
                 }
-
+                if(call sendQueue.size()>0){
+                    post sendData();
+                }
             }
             else{ // There's no outbound data from any socket.
                 dbg(TRANSPORT_CHANNEL,"WARNING (sendData): No data in sendBuffer of socket %d\n",socketID);
@@ -380,7 +381,7 @@ implementation{
                             if(((byteCount_t)(socket.nextToRead-socket.nextExpected))%SOCKET_BUFFER_SIZE >= incomingSize || socket.nextToRead==socket.nextExpected){
                                 tcpack acker;
                                 //As long as there is new data, accept it.
-                                if((byteCount_t)(incomingMsg.currbyte + incomingSize - socket.nextExpected) < SOCKET_BUFFER_SIZE){
+                                if((byteCount_t)(incomingMsg.currbyte + incomingSize - socket.nextExpected-1) < SOCKET_BUFFER_SIZE){
                                     //If copying into the buffer does not require a wraparound, then directly copy.
                                     if(socket.nextExpected%SOCKET_BUFFER_SIZE+incomingSize<SOCKET_BUFFER_SIZE){
                                         memcpy(&(socket.recvBuff[incomingMsg.currbyte%SOCKET_BUFFER_SIZE]),incomingMsg.data,incomingSize);
@@ -872,6 +873,9 @@ implementation{
         if((byteCount_t)(socket.lastAcked - socket.nextToWrite) == SOCKET_BUFFER_SIZE){
             return 0;
         }
+        else if((byteCount_t)(socket.lastAcked - socket.nextToWrite) == 0){
+            return SOCKET_BUFFER_SIZE;
+        }
         return (byteCount_t)(socket.lastAcked-socket.nextToWrite)%SOCKET_BUFFER_SIZE;
     }
 
@@ -897,7 +901,7 @@ implementation{
                 memcpy(location,&(readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]),length-overflow);
                 memcpy(location+length-overflow,&(readSocket.recvBuff[0]),overflow);
             }
-            dbg(TRANSPORT_CHANNEL, "INFO (transportData): Peek [%d,%d) (%d bytes).\n",(readSocket.nextToRead-length)%SOCKET_BUFFER_SIZE, readSocket.nextToRead%SOCKET_BUFFER_SIZE, length);
+            dbg(TRANSPORT_CHANNEL, "INFO (transportData): Peek [%d,%d) (%d bytes).\n",readSocket.nextToRead%SOCKET_BUFFER_SIZE, (readSocket.nextToRead+length)%SOCKET_BUFFER_SIZE, length);
             return SUCCESS;
         }
         else{ //Socket does not exist.
@@ -1400,13 +1404,13 @@ implementation{
         memcpy(printedBuffer, buffer, len);
         printedBuffer[len]=0;
         for(i = 0; i < len; i++){
-            if(printedBuffer[i] == (uint8_t)'\n'){
-                printedBuffer[i] = (uint8_t)'\\';
+            if(printedBuffer[i] < ' '){
+                printedBuffer[i] = '\\';
             }
         }
 
-        dbg(TRANSPORT_CHANNEL, "(\\=\\n) |%s|\n",printedBuffer);
-        dbg(TRANSPORT_CHANNEL, "       |          |10       |20       |30       |40       |50       |60       |70       |80       |90       |100      |110      |120    |\n",printedBuffer);
+        dbg(TRANSPORT_CHANNEL, "(\\=%c) |%s|\n",128,printedBuffer);
+        dbg(TRANSPORT_CHANNEL, "      |          |10       |20       |30       |40       |50       |60       |70       |80       |90       |100      |110      |120    |\n",printedBuffer);
     }
 
 }

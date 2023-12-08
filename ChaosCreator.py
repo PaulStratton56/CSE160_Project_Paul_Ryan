@@ -1,47 +1,50 @@
 from TestSim import TestSim
 
 def main():
-    # Get simulation ready to run.
     s = TestSim()
-
-    # Before we do anything, lets simulate the network off.
     s.runTime(1)
-
-    # Load the the layout of the network.
     s.loadTopo("tuna-melt.topo")
-
-    # Add a noise model to all of the motes.
-    s.loadNoise("meyer-heavy.txt")
-
-    # Turn on all of the sensors.
+    # s.loadNoise("meyer-heavy.txt")
+    s.loadNoise("no_noise.txt")
     s.bootAll()
 
-    # Add the main channels. These channels are declared in includes/channels.h
-    s.addChannel(s.COMMAND_CHANNEL)
+    # s.addChannel(s.COMMAND_CHANNEL)
     s.addChannel(s.CHAOS_SERVER_CHANNEL)
+    s.addChannel(s.CHAOS_CLIENT_CHANNEL)
     # s.addChannel(s.GENERAL_CHANNEL)
-    s.addChannel(s.TRANSPORT_CHANNEL)
+    # s.addChannel(s.TRANSPORT_CHANNEL) 
     # s.addChannel(s.TESTCONNECTION_CHANNEL)
 
     # After sending a ping, simulate a little to prevent collision.
     s.runTime(100)
 
     s.host(1)
-    s.runTime(80)
+    s.runTime(20)
     # s.printUsers(2,1)
     # s.runTime(10)
-    s.hello(2,1, "Icywind")
-    s.runTime(80)
-    s.hello(3,1, "Gandle")
-    s.runTime(80)
-    # s.whisper(2,3,"Gandle","Testing123")
-    # s.runTime(10)
-    s.chat(3,"Hello_World")
-    s.runTime(80)
-    s.goodbye(2,1)
-    s.runTime(80)
-    s.goodbye(3,1)
-    s.runTime(80)
+    s.hello(16,1, "Icywind")
+    s.runTime(20)
+    s.hello(23,1, "Gand")
+    s.runTime(20)
+    s.chat(23,"Hello World")
+    s.runTime(20)
+    
+    s.hello(7,1, "Saur")
+    s.runTime(20)
+    
+    s.chat(7,"Hi everyone")
+    s.runTime(20)
+    
+    s.whisper(7,23,"Gand","Hi G!")
+    s.runTime(20)
+    
+    
+    s.goodbye(16,1)
+    s.runTime(20)
+    s.goodbye(23,1)
+    s.runTime(20)
+    s.goodbye(7,1)
+    s.runTime(20)
 
 if __name__ == '__main__':
     main()

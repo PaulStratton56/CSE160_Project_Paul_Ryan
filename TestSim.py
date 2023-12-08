@@ -159,7 +159,7 @@ class TestSim:
         self.sendCMD(self.CMD_GOODBYE, source, "{0}".format(chr(dest)))
 
     def whisper(self, source, dest, user, msg):
-        self.sendCMD(self.CMD_WHISPER, source, "{0}{1}{2}{3}".format(chr(dest),chr(len(msg)),chr(len(user)),msg+user))
+        self.sendCMD(self.CMD_WHISPER, source, "{0}{1}{2}{3}".format(chr(dest),chr(len(user)),chr(len(msg)),user+msg))
 
     def chat(self, source, msg):
         self.sendCMD(self.CMD_CHAT, source, "{0}{1}".format(chr(len(msg)), msg))
