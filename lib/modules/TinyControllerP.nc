@@ -862,12 +862,68 @@ implementation{
 
     }
 
+    command uint8_t TinyController.checkWriteRoom(uint32_t socketID){
+        if(!call sockets.contains(socketID)){
+            dbg(TRANSPORT_CHANNEL,"Socket %d doesn't exist to check write room\n");
+            return 0;
+        }
+        if((byteCount_t)(socket.lastAcked - socket.nextToWrite) == SOCKET_BUFFER_SIZE){
+            return 0;
+        }
+        return (byteCount_t)(socket.lastAcked-socket.nextToWrite)%SOCKET_BUFFER_SIZE;
+    }
+
+    command error_t TinyController.peek(uint32_t socketID, uint8_t length, uint8_t* location){
+        //Check that the socket exists.
+        if(call sockets.contains(socketID)){
+            //If the socket exists, store it for later use.
+            socket_store_t readSocket = call sockets.get(socketID);
+
+            dbg(TRANSPORT_CHANNEL, "DEBUG (Transport): Peeking from %d, which has value %d\n", readSocket.nextToRead%SOCKET_BUFFER_SIZE, readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]);
+
+            //Print the currently stored data.
+            // dbg(TRANSPORT_CHANNEL, "INFO (buffer): Reading bytes. Buffer:\n");
+            // printBuffer(readSocket.recvBuff, SOCKET_BUFFER_SIZE);
+
+            //If the portion of memory to be read does not require a wraparound in the recbBuffer of the socket, copy directly.
+            if(readSocket.nextToRead%SOCKET_BUFFER_SIZE+length<SOCKET_BUFFER_SIZE){
+                memcpy(location,&(readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]),length);
+            }
+            else{//Otherwise, a wraparound is required
+                //Consider the excess bytes that are stored at the beginning, then write the end and start to the destination memory location.
+                uint8_t overflow = readSocket.nextToRead%SOCKET_BUFFER_SIZE+length-SOCKET_BUFFER_SIZE;
+                memcpy(location,&(readSocket.recvBuff[readSocket.nextToRead%SOCKET_BUFFER_SIZE]),length-overflow);
+                memcpy(location+length-overflow,&(readSocket.recvBuff[0]),overflow);
+            }
+            dbg(TRANSPORT_CHANNEL, "INFO (transportData): Peek [%d,%d) (%d bytes).\n",(readSocket.nextToRead-length)%SOCKET_BUFFER_SIZE, readSocket.nextToRead%SOCKET_BUFFER_SIZE, length);
+            return SUCCESS;
+        }
+        else{ //Socket does not exist.
+            dbg(TRANSPORT_CHANNEL,"ERROR: No Socket %d.\n",socketID);
+            return FAIL;
+        }
+    }
+    command error_t TinyController.updatePeek(uint32_t socketID, uint8_t length){
+        if(!call sockets.conatins(socketID)){
+            dbg(TRANSPORT_CHANNEL,"ERROR: No Socket %d.\n",socketID);
+            return FAIL;
+        }
+        socket_store_t socket = call sockets.get(socketID);
+        socket.nextToRead+=length;
+        call sockets.insert(socketID,socket);
+        return SUCCESS;
+    }
+
     /* == read ==
         Copies a given amount of data from the recvBuffer of a given socket to another location in memory for an application to read.
         Must check several things, including if the read data wraps around the buffer, etc.
         Called when an application with a preexisting connection wants to read from its socket.*/
     command error_t TinyController.read(uint32_t socketID, uint8_t length, uint8_t* location){
         //Check that the socket exists.
+        if(length==0){
+            dbg(TRANSPORT_CHANNEL,"No point in reading length 0\n");
+            return FAIL;
+        }
         if(call sockets.contains(socketID)){
             //If the socket exists, store it for later use.
             socket_store_t readSocket = call sockets.get(socketID);

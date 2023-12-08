@@ -4,6 +4,9 @@ interface TinyController{
     command error_t closeConnection(uint32_t socketID);
     command uint8_t write(uint32_t socketID, uint8_t* payload, uint8_t length);
     command error_t read(uint32_t socketID,uint8_t length,uint8_t* location);
+    command error_t peek(uint32_t socketID,uint8_t length,uint8_t* location);
+    command uint8_t checkWriteRoom(uint32_t socketID);
+    command error_t updatePeek(uint32_t socketID, uint8_t length);
     command void finishClose(uint32_t socketID);
     event void connected(uint32_t socketID, uint8_t sourcePTL);
     event void gotData(uint32_t socketID, uint8_t length);

@@ -18,6 +18,9 @@ char LSP_CHANNEL[]="lsps";
 char TRANSPORT_CHANNEL[]="transport";
 char TESTCONNECTION_CHANNEL[] = "testconnection";
 
+//Project 4
+char CHAOS_SERVER_CHANNEL[] = "chaosServer";
+char CHAOS_CLIENT_CHANNEL[] = "chaosClient";
 // Personal Debuggin Channels for some of the additional models implemented.
 char HASHMAP_CHANNEL[]="hashmap";
 #endif

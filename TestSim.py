@@ -42,6 +42,9 @@ class TestSim:
     TRANSPORT_CHANNEL="transport"
     TESTCONNECTION_CHANNEL = "testconnection"
 
+    #Project 4
+    CHAOS_SERVER_CHANNEL = "chaosServer"
+    CHAOS_CLIENT_CHANNEL = "chaosClient"
     # Personal Debuggin Channels for some of the additional models implemented.
     HASHMAP_CHANNEL="hashmap"
 
