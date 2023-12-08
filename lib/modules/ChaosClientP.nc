@@ -14,7 +14,8 @@ implementation{
     uint8_t outboundMail[256];
     uint8_t outboundLength;
     uint8_t incomingMail[256];
-    uint8_t incomingLength;
+    uint8_t fullIncomingLength;
+    uint8_t receivedUntil = 0;
 
     /* == hello == 
         Called when a client is told to connect to the destination server.
@@ -166,7 +167,33 @@ implementation{
 
     event void TC.gotData(uint32_t socketID, uint8_t length){
         if(socketID == clientSocket){
-            dbg(CHAOS_CLIENT_CHANNEL, "Got something! I'm not programmed to understand what it is yet though...\n");
+            call TC.read(clientSocket, length, &incomingMail[receivedUntil]);
+            if(receivedUntil == 0){ //new message
+                switch(incomingMail[0]){
+                    case(CHAT_INSTRUCTION):
+                        fullIncomingLength = incomingMail[1] + 2;
+                        break;
+                    case(WHISPER_INSTRUCTION):
+                        fullIncomingLength = incomingMail[2] + incomingMail[1] + 3;
+                        break;
+                    case(LIST_USERS_INSTRUCTION):
+                        fullIncomingLength = incomingMail[1] + 2;
+                        break;
+                }
+            }
+            receivedUntil += length;
+            if(receivedUntil >= fullIncomingLength){ //Full message
+                uint8_t printedMessage[fullIncomingLength+1];
+                receivedUntil = 0;
+
+                memcpy(printedMessage, incomingMail, fullIncomingLength);
+                printedMessage[fullIncomingLength] = '\00';
+                dbg(CHAOS_CLIENT_CHANNEL, "Message received: %s\n",printedMessage);
+                memset(&(incomingMail[0]), 0, 256);
+            }
+            else{
+                dbg(CHAOS_CLIENT_CHANNEL, "Still missing %d bytes!!!\n", (fullIncomingLength-receivedUntil));
+            }
         }
     }
 
@@ -184,6 +211,6 @@ implementation{
         // }
 
     }
-    
+
     event void TC.wtf(uint32_t socketID){}
 }
