@@ -5,4 +5,9 @@ configuration ChaosClientC{
 implementation{
    components ChaosClientP;
    ChaosClient = ChaosClientP.ChaosClient;
+
+   components TinyControllerC as TC;
+   ChaosClientP.TC -> TC;
+
+   
 }

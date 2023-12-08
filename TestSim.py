@@ -149,17 +149,17 @@ class TestSim:
     def printUsers(self, client, server):
         self.sendCMD(self.CMD_PRINT_USERS, client, "{0}".format(chr(server)))
 
-    def hello(self, source, dest):
-        self.sendCMD(self.CMD_HELLO, source, "{0}".format(chr(dest)))
+    def hello(self, source, dest, username):
+        self.sendCMD(self.CMD_HELLO, source, "{0}{1}{2}".format(chr(dest),chr(len(username)),username))
 
     def goodbye(self, source, dest):
         self.sendCMD(self.CMD_GOODBYE, source, "{0}".format(chr(dest)))
 
-    def whisper(self, source, dest, msg):
-        self.sendCMD(self.CMD_WHISPER, source, "{0}{1}".format(chr(dest),msg))
+    def whisper(self, source, dest, user, msg):
+        self.sendCMD(self.CMD_WHISPER, source, "{0}{1}{2}{3}".format(chr(dest),chr(len(msg)),chr(len(user)),msg+user))
 
     def chat(self, source, msg):
-        self.sendCMD(self.CMD_CHAT, source, "{0}".format(msg))
+        self.sendCMD(self.CMD_CHAT, source, "{0}{1}".format(chr(len(msg)), msg))
 
     def testServer(self, source, port, byteNum):
         self.sendCMD(self.CMD_TEST_SERVER, source, "{0}{1}".format(chr(port), chr(byteNum)))

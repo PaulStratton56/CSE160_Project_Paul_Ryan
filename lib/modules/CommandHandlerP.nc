@@ -111,8 +111,8 @@ implementation{
                     break;
                 
                 case CMD_HELLO:
-                    dbg(COMMAND_CHANNEL, "Command Type: Hello | To: %d\n",buff[0]);
-                    signal CommandHandler.hello(buff[0]);
+                    dbg(COMMAND_CHANNEL, "Command Type: Hello | To: %d | Name: '%s' (len %d)\n",buff[0],&buff[2],buff[1]);
+                    signal CommandHandler.hello(buff[0], &buff[2], buff[1]);
                     break;
                 
                 case CMD_GOODBYE:
@@ -121,13 +121,14 @@ implementation{
                     break;
                 
                 case CMD_WHISPER:
-                    dbg(COMMAND_CHANNEL, "Command Type: Whisper | To: %d | Payload: %s\n",buff[0],&buff[1]);
-                    signal CommandHandler.whisper(buff[0],&buff[1]);
+                    //0: dest 1: mLen 2: uLen 3: pld
+                    dbg(COMMAND_CHANNEL, "Command Type: Whisper | To: %d | ULen: %d | MLen: %d | Payload: %s\n",buff[0],buff[2],buff[1],&buff[3]);
+                    signal CommandHandler.whisper(buff[0],buff[1],&buff[3],buff[2]);
                     break;
 
                 case CMD_CHAT:
-                    dbg(COMMAND_CHANNEL, "Command Type: Chat | Payload: %s\n",&buff[0]);
-                    signal CommandHandler.chat(&buff[0]);
+                    dbg(COMMAND_CHANNEL, "Command Type: Chat | Len: %d | Payload: %s\n",buff[0],&buff[1]);
+                    signal CommandHandler.chat(&buff[1], buff[0]);
                     break;
 
                 default:
