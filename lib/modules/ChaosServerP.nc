@@ -36,6 +36,8 @@ implementation{
             user u;
             uint32_t userkey;
             uint8_t username[16];
+            uint8_t usernamesLength=0;
+            uint8_t pUsername[16];
             memset(&(readBuffer[0]),0,128);
             // dbg(CHAOS_SERVER_CHANNEL, "Got something!\n");
             if(call users.contains(socketID)){
@@ -129,10 +131,20 @@ implementation{
                         break;
                     case LIST_USERS_INSTRUCTION:
                         call tc.read(socketID,length_to_read,&(readBuffer[0]));
+                        usernamesLength=0;
                         for(i=0;i<num_users;i++){
                             sid = call users.getIndex(i);
                             otherUser = call users.get(sid);
-                            e = call tc.write(socketID,&(otherUser.username[0]),otherUser.usernameLength);
+                            usernamesLength+=(otherUser.usernameLength+1);
+                        }
+                        pUsername[0]=usernamesLength;
+                        for(i=0;i<num_users;i++){
+                            sid = call users.getIndex(i);
+                            otherUser = call users.get(sid);
+                            memset(pUsername,0,16);
+                            memcpy(pUsername,&(otherUser.username[i==0]),otherUser.usernameLength);
+                            pUsername[(i==0)+otherUser.usernameLength] = '\n';
+                            e = call tc.write(socketID,pUsername,otherUser.usernameLength+(i==0));
                             if(e!=otherUser.usernameLength){
                                 dbg(TRANSPORT_CHANNEL,"Write Problems in List Instruction\n");
                             }
