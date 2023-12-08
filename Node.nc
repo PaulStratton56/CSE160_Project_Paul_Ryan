@@ -138,23 +138,23 @@ implementation{
    }
 
    event void CommandHandler.printUsers(uint8_t dest){
-      call ChaosServer.printUsers(dest);
+      call ChaosClient.printUsers(dest);
    }
 
-   event void CommandHandler.hello(uint8_t dest){
-      call ChaosClient.hello(dest);
+   event void CommandHandler.hello(uint8_t dest, uint8_t* username, uint8_t userLength){
+      call ChaosClient.hello(dest, username, userLength);
    }
 
    event void CommandHandler.goodbye(uint8_t dest){
       call ChaosClient.goodbye(dest);
    }
 
-   event void CommandHandler.whisper(uint8_t dest, uint8_t* payload){
-      call ChaosClient.whisper(dest, payload);
+   event void CommandHandler.whisper(uint8_t dest, uint8_t msgLen, uint8_t* payload, uint8_t userLen){
+      call ChaosClient.whisper(dest, msgLen, payload, userLen);
    }
 
-   event void CommandHandler.chat(uint8_t* payload){
-      call ChaosClient.chat(payload);
+   event void CommandHandler.chat(uint8_t* payload, uint8_t msgLen){
+      call ChaosClient.chat(payload, msgLen);
    }
    
    event void router.gotTCP(uint8_t* _){}
