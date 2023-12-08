@@ -905,6 +905,7 @@ implementation{
             return FAIL;
         }
     }
+    
     command error_t TinyController.updatePeek(uint32_t socketID, uint8_t length){
         socket_store_t socket;
         if(!call sockets.contains(socketID)){

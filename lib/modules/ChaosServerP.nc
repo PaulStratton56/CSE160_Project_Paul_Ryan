@@ -32,6 +32,7 @@ implementation{
         error_t e;
         user u;
         uint32_t userkey;
+        dbg(CHAOS_SERVER_CHANNEL, "Got something!\n");
         if(call users.contains(socketID)){
             int i=0;
             int num_users = call users.size();
@@ -85,6 +86,7 @@ implementation{
                             dbg(TRANSPORT_CHANNEL,"Write Problems in Chat Instruction\n");
                         }
                     }
+                    dbg(CHAOS_SERVER_CHANNEL,"Sending chat to all clients\n");
                     u.bytesLeft-=byteCount;
                     break;
                 case WHISPER_INSTRUCTION:
@@ -97,6 +99,9 @@ implementation{
                     if(e!=SUCCESS){
                         dbg(TRANSPORT_CHANNEL,"Write Problems in Whisper Instruction\n");
                     }
+                    else{
+                        dbg(CHAOS_SERVER_CHANNEL,"Sending whisper to %s\n",&(call users.get(u.whisperSocketID)).username[0]);
+                    }
                     u.bytesLeft-=byteCount;
                     break;
                 case GOODBYE_INSTRUCTION:
@@ -105,7 +110,7 @@ implementation{
                     userkey = hashUsername((uint32_t*)&(peekBuffer[2]));
                     call sockets.remove(userkey);
                     call users.remove(socketID);
-                    dbg(CHAOS_SERVER_CHANNEL,"Removed user %s\n",&(peekBuffer[2]));
+                    dbg(CHAOS_SERVER_CHANNEL,"Goodbye %s!\n",&(peekBuffer[2]));
                     break;
                 case LIST_USERS_INSTRUCTION:
                     call tc.read(socketID,length_to_read,&(readBuffer[0]));
@@ -118,6 +123,7 @@ implementation{
                         }
                     }
                     u.bytesLeft=0;
+                    dbg(CHAOS_SERVER_CHANNEL,"Responding with list of users\n");
                     break;
                 default:
                     dbg(CHAOS_SERVER_CHANNEL,"Nonsensical Instruction, likely buffer misalignment, from socket %d\n",socketID);
@@ -132,7 +138,7 @@ implementation{
             call users.insert(socketID,u);
         }
         else{
-            call tc.read(socketID,14,&(readBuffer[0]));
+            call tc.read(socketID,length_to_read,&(readBuffer[0]));
             if(readBuffer[0]==HELLO_INSTRUCTION){
                 u.lastInstruction=NULL_INSTRUCTION;
                 memcpy(&(u.username[0]),&(readBuffer[3]),readBuffer[1]);//assuming username in first packet completely
@@ -143,10 +149,11 @@ implementation{
                 else{
                     call sockets.insert(userkey,socketID);
                     call users.insert(socketID,u);
+                    dbg(CHAOS_SERVER_CHANNEL,"Welcome to the Server %s\n",u.username);
                 }
             }
             else{
-                dbg(CHAOS_SERVER_CHANNEL,"Not hello instruction\n");
+                dbg(CHAOS_SERVER_CHANNEL,"%d is not hello instruction, and user isn't known.\n",readBuffer[0]);
             }
         }
     }

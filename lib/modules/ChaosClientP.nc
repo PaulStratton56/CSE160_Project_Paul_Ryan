@@ -1,4 +1,6 @@
- module ChaosClientP{
+#include "../includes/user.h"
+
+module ChaosClientP{
     provides interface ChaosClient;
 
     uses interface TinyController as TC;
@@ -28,7 +30,7 @@ implementation{
         Called when a client is told to connect to the destination server.
         Sets the username and usernameLength to whatever Node tells it to.
         Establishes a connection via TinyController. */
-    command void ChaosClient.hello(uint8_t dest, uint8_t* user, uint8_t userLength){
+    command void ChaosClient.hello(uint8_t dest, uint8_t* newUser, uint8_t userLength){
         error_t result = FAIL;
         uint8_t bytesToSend = 3+userLength;
         uint8_t helloMessage[bytesToSend];
@@ -36,14 +38,14 @@ implementation{
         dbg(COMMAND_CHANNEL, "Connecting to server %d...\n",dest);
 
         //Copy the username into the client interface.
-        memcpy(username, user, userLength);
+        memcpy(username, newUser, userLength);
         usernameLength = userLength;
 
         //Construct the hello message to send to the server.
-        helloMessage[0] = 0;
+        helloMessage[0] = HELLO_INSTRUCTION;
         helloMessage[1] = userLength;
         helloMessage[2] = clientPort;
-        memcpy(&helloMessage[3], user, userLength);
+        memcpy(&(helloMessage[3]), newUser, userLength);
 
         //Continue asking for a port until TC complies.
         while(result == FAIL){
@@ -53,13 +55,10 @@ implementation{
         //Request a connection with the server.
         clientSocket = call TC.requestConnection(dest, 11, clientPort);
 
-        //Keep shoving the helloMessage into the buffer until it's all there. (Should only be once)
-        //Doesn't work until there's a server to send to
-        // while(bytesToSend > 0){
-        //     bytesToSend -= call TC.write(clientSocket, &helloMessage[3 + (usernameLength-bytesToSend)], bytesToSend);
-        // }
-
-        dbg(COMMAND_CHANNEL, "Sent |%d|%d|%d|%s.\n",helloMessage[0],helloMessage[1],helloMessage[2],&helloMessage[3]);
+        //Store the message for when we're connected.
+        //Need to wait for connected state, which will be signaled.
+        memcpy(outboundMail, helloMessage, bytesToSend);
+        outboundLength = bytesToSend;
 
         dbg(COMMAND_CHANNEL, "Welcome, %s.\n",username);
     }
@@ -76,14 +75,14 @@ implementation{
         memcpy(outboundMail, payload, bytesToSend);
         outboundLength = msgLen;
 
-        chatMessage[0] = 1;
+        chatMessage[0] = CHAT_INSTRUCTION;
         chatMessage[1] = msgLen;
         memcpy(&chatMessage[2], payload, msgLen);
 
         //Keep shoving the chatMessage into the buffer until it's all there. (Should only be once)
         //Doesn't work until there's a server to send to
         // while(bytesToSend > 0){
-        //     bytesToSend -= call TC.write(clientSocket, &chatMessage[2 + (msgLen-bytesToSend)], bytesToSend);
+        bytesToSend -= call TC.write(clientSocket, &(chatMessage[2 + (msgLen-bytesToSend)]), bytesToSend);
         // }
 
         dbg(COMMAND_CHANNEL, "Sent |%d|%d|%s.\n", chatMessage[0], chatMessage[1], &chatMessage[2]);
@@ -96,26 +95,26 @@ implementation{
     command void ChaosClient.whisper(uint8_t dest, uint8_t msgLen, uint8_t* payload, uint8_t userLen){
         uint8_t bytesToSend = 3+msgLen+userLen;
         uint8_t whisperMessage[bytesToSend];
-        uint8_t user[userLen];
+        uint8_t targetUser[userLen];
         uint8_t msg[msgLen];
 
-        memcpy(user, &payload[msgLen], userLen);
+        memcpy(targetUser, &payload[msgLen], userLen);
         memcpy(msg, payload, msgLen);
 
         
         memcpy(outboundMail, payload, bytesToSend);
         outboundLength = msgLen;
 
-        whisperMessage[0] = 2;
+        whisperMessage[0] = WHISPER_INSTRUCTION;
         whisperMessage[1] = userLen;
         whisperMessage[2] = msgLen;
-        memcpy(&whisperMessage[3], user, userLen);
+        memcpy(&whisperMessage[3], targetUser, userLen);
         memcpy(&whisperMessage[3+userLen], msg, msgLen);
 
         //Keep shoving the chatMessage into the buffer until it's all there. (Should only be once)
         //Doesn't work until there's a server to send to
         // while(bytesToSend > 0){
-        //     bytesToSend -= call TC.write(clientSocket, &chatMessage[2 + (msgLen-bytesToSend)], bytesToSend);
+            bytesToSend -= call TC.write(clientSocket, &whisperMessage[2 + (msgLen-bytesToSend)], bytesToSend);
         // }
 
         {
@@ -125,7 +124,7 @@ implementation{
         memcpy(pUser, &whisperMessage[3], userLen);
         pMessage[msgLen] = '\00';
         pUser[userLen] = '\00';
-        dbg(COMMAND_CHANNEL, "Whispering to %s (node %d): '%s'...\n", user, dest, pMessage);
+        dbg(COMMAND_CHANNEL, "Whispering to %s (node %d): '%s'...\n", targetUser, dest, pMessage);
         dbg(COMMAND_CHANNEL, "Sent |%d|%d|%d|%s|%s.\n", whisperMessage[0], whisperMessage[1], whisperMessage[2], pUser, pMessage);
         }
         
@@ -138,17 +137,18 @@ implementation{
         uint8_t goodbyeMessage[bytesToSend];
         dbg(COMMAND_CHANNEL, "Logging out from server %d...\n",dest);
 
-        goodbyeMessage[0] = 3;
+        goodbyeMessage[0] = GOODBYE_INSTRUCTION;
         goodbyeMessage[1] = usernameLength;
         memcpy(&goodbyeMessage[2],username,usernameLength);
 
         //Keep shoving the goodbyeMessage into the buffer until it's all there. (Should only be once)
         //Doesn't work until there's a server to send to
         // while(bytesToSend > 0){
-        //     bytesToSend -= call TC.write(clientSocket, &goodbyeMessage[2 + (usernameLength-bytesToSend)], bytesToSend);
+            bytesToSend -= call TC.write(clientSocket, &goodbyeMessage[2 + (usernameLength-bytesToSend)], bytesToSend);
         // }
 
-        // call TC.closeConnection(clientSocket);
+        call TC.closeConnection(clientSocket);
+
         {
             uint8_t* pUser[usernameLength+1];
             memcpy(pUser, &goodbyeMessage[2], usernameLength);
@@ -163,14 +163,14 @@ implementation{
         Sends the simplest of the messages to the server. */
     command void ChaosClient.printUsers(uint8_t dest){
         uint8_t printUsersMessage[1];
-        uint8_t bytestoSend = 1;
+        uint8_t bytesToSend = 1;
 
-        printUsersMessage[0] = 4;
+        printUsersMessage[0] = LIST_USERS_INSTRUCTION;
 
         //Keep shoving the printUsersMessage into the buffer until it's all there. (Should only be once)
         //Doesn't work until there's a server to send to
         // while(bytesToSend > 0){
-        //     bytesToSend -= call TC.write(clientSocket, printUsersMessage, bytesToSend);
+            bytesToSend -= call TC.write(clientSocket, printUsersMessage, bytesToSend);
         // }
 
         dbg(COMMAND_CHANNEL, "Send |%d|.\n", printUsersMessage[0]);
@@ -187,6 +187,16 @@ implementation{
         call TC.finishClose(IDtoClose);
     }
 
-    event void TC.connected(uint32_t socketID, uint8_t sourcePTL){}
+    event void TC.connected(uint32_t socketID, uint8_t sourcePTL){
+        if(sourcePTL == PROTOCOL_CHAOS_CLIENT && socketID == clientSocket){
+            call TC.write(clientSocket, outboundMail, outboundLength);
+            dbg(COMMAND_CHANNEL, "Sent |%d|%d|%d|%s.\n",outboundMail[0],outboundMail[1],outboundMail[2],&outboundMail[3]);
+        }
+        else{
+            dbg(COMMAND_CHANNEL, "Not my connection.\n");
+        }
+
+    }
+    
     event void TC.wtf(uint32_t socketID){}
 }
