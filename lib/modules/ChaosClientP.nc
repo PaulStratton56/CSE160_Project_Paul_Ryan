@@ -59,6 +59,11 @@ implementation{
         uint8_t bytesToSend = 2+msgLen;
         uint8_t chatMessage[bytesToSend];
 
+        if(msgLen > 12){
+            dbg(CHAOS_CLIENT_CHANNEL, "ERROR (Chat): Cannot send messages greater than 12 characters.\n");
+            return;
+        }
+
         dbg(CHAOS_CLIENT_CHANNEL, "Posting Chat '%s'...\n",payload);
         
         // memcpy(outboundMail, payload, bytesToSend);
@@ -86,6 +91,11 @@ implementation{
         uint8_t whisperMessage[bytesToSend];
         uint8_t targetUser[userLen];
         uint8_t msg[msgLen];
+
+        if(msgLen > 12){
+            dbg(CHAOS_CLIENT_CHANNEL, "ERROR (Chat): Cannot send messages greater than 12 characters.\n");
+            return;
+        }
         
         memcpy(targetUser,payload,userLen);
         memcpy(msg,&payload[userLen],msgLen);
@@ -199,7 +209,6 @@ implementation{
                 {
                 uint8_t printedMessage[pMessageLen];
                 switch(incomingMail[0]){
-                    uint8_t i;
                     case(CHAT_INSTRUCTION):
                         memcpy(printedMessage, &(incomingMail[2]), incomingMail[1]);
                         printedMessage[fullIncomingLength-2] = '\00';
