@@ -145,7 +145,7 @@ implementation{
                             otherUser = call users.get(sid);
                             memset(&(pUsername[2*(i==0)]),0,16);
                             memcpy(&(pUsername[2*(i==0)]),&(otherUser.username[0]),otherUser.usernameLength);
-                            pUsername[2*(i==0)+otherUser.usernameLength+1] = '\n';
+                            pUsername[2*(i==0)+otherUser.usernameLength] = '\n';
                             dbg(CHAOS_SERVER_CHANNEL,"Node %d| username:%s, usernameLength(\\n):%d\n",(uint8_t)sid,otherUser.username,otherUser.usernameLength+1);
                             e = call tc.write(socketID,&(pUsername[0]),2*(i==0)+otherUser.usernameLength+1);
                             if(e!=2*(i==0)+otherUser.usernameLength+1){

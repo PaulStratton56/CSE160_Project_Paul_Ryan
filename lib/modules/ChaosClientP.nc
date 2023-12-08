@@ -202,29 +202,14 @@ implementation{
                     uint8_t i;
                     case(CHAT_INSTRUCTION):
                         memcpy(printedMessage, &(incomingMail[2]), incomingMail[1]);
-                        for(i = 0; i < incomingMail[1]; i++){
-                            if(printedMessage[i] == 0){
-                                printedMessage[i] = '\n';
-                            }
-                        }
                         printedMessage[fullIncomingLength-2] = '\00';
                         break;
                     case(WHISPER_INSTRUCTION):
                         memcpy(printedMessage, &(incomingMail[3+incomingMail[1]]), incomingMail[2]);
-                        for(i = 0; i < incomingMail[1]; i++){
-                            if(printedMessage[i] == 0){
-                                printedMessage[i] = '\n';
-                            }
-                        }
                         printedMessage[fullIncomingLength-2-incomingMail[1]-1] = '\00';
                         break;
                     case(LIST_USERS_INSTRUCTION):
                         memcpy(printedMessage, &(incomingMail[1]), incomingMail[1]);
-                        for(i = 0; i < incomingMail[1]; i++){
-                            if(printedMessage[i] == 0){
-                                printedMessage[i] = '\n';
-                            }
-                        }
                         printedMessage[fullIncomingLength-2] = '\00';
                         break;
                 }
