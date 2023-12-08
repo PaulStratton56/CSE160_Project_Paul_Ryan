@@ -863,10 +863,12 @@ implementation{
     }
 
     command uint8_t TinyController.checkWriteRoom(uint32_t socketID){
+        socket_store_t socket;
         if(!call sockets.contains(socketID)){
             dbg(TRANSPORT_CHANNEL,"Socket %d doesn't exist to check write room\n");
             return 0;
         }
+        socket = call sockets.get(socketID);
         if((byteCount_t)(socket.lastAcked - socket.nextToWrite) == SOCKET_BUFFER_SIZE){
             return 0;
         }
@@ -904,11 +906,12 @@ implementation{
         }
     }
     command error_t TinyController.updatePeek(uint32_t socketID, uint8_t length){
-        if(!call sockets.conatins(socketID)){
+        socket_store_t socket;
+        if(!call sockets.contains(socketID)){
             dbg(TRANSPORT_CHANNEL,"ERROR: No Socket %d.\n",socketID);
             return FAIL;
         }
-        socket_store_t socket = call sockets.get(socketID);
+        socket = call sockets.get(socketID);
         socket.nextToRead+=length;
         call sockets.insert(socketID,socket);
         return SUCCESS;

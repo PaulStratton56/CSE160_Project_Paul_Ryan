@@ -14,6 +14,6 @@ implementation{
     components new HashmapC(user, 64) as users;
     ChaosServerP.users -> users;
 
-    components TinyContorllerC as tc;
+    components TinyControllerC as tc;
     ChaosServerP.tc -> tc;
 }

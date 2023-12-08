@@ -5,7 +5,7 @@ module ChaosServerP{
 
     uses interface Hashmap<uint32_t> as sockets;//username -> userKey -> socketID
     uses interface Hashmap<user> as users;//socketID -> user(username, lastInstruction, bytesLeft, whisperSocketID)
-    uses interface TinyContorller as tc;
+    uses interface TinyController as tc;
 }
 
 implementation{
@@ -13,7 +13,7 @@ implementation{
     uint8_t protocol = 111;
     command void ChaosServer.host(){
         dbg(COMMAND_CHANNEL, "Host issued! Starting server...\n");
-        tc.getPort(serverPort,protocol);
+        call tc.getPort(serverPort,protocol);
     }
     command void ChaosServer.printUsers(uint8_t dest){
         dbg(COMMAND_CHANNEL, "printUsers issued! Sending list to %d\n", dest);
@@ -26,25 +26,30 @@ implementation{
         }
         return userKey;
     }
-    event void connected(uint32_t socketID, uint8_t sourcePTL){}
-    event void gotData(uint32_t socketID, uint8_t length_to_read){
+    event void tc.connected(uint32_t socketID, uint8_t sourcePTL){}
+    event void tc.gotData(uint32_t socketID, uint8_t length_to_read){
         uint8_t readBuffer[128];
         error_t e;
+        user u;
+        uint32_t userkey;
         if(call users.contains(socketID)){
-            uint32_t userkey;
-            user u;
+            int i=0;
+            int num_users = call users.size();
+            uint32_t sid;
+            uint8_t room;
+            user otherUser;
             uint8_t byteCount=128;
             uint8_t peekBuffer[14];
             u = call users.get(socketID);
             if(u.lastInstruction==NULL_INSTRUCTION){
-                tc.peek(socketID,3,&(peekBuffer[0]));
+                call tc.peek(socketID,3,&(peekBuffer[0]));
                 u.lastInstruction = peekBuffer[0];
                 u.bytesLeft = 1
                             + peekBuffer[1]*(u.lastInstruction!=LIST_USERS_INSTRUCTION) 
                             + (u.lastInstruction==HELLO_INSTRUCTION)
                             + peekBuffer[2]*(u.lastInstruction==WHISPER_INSTRUCTION);
                 if(u.lastInstruction==WHISPER_INSTRUCTION){
-                    tc.peek(socketID,length_to_read,&(peekBuffer[0]));
+                    call tc.peek(socketID,length_to_read,&(peekBuffer[0]));
                     userkey = hashUsername((uint32_t*)&(peekBuffer[3]));
                     if(call sockets.contains(userkey)){
                         u.whisperSocketID = call sockets.get(userkey);
@@ -60,26 +65,22 @@ implementation{
             byteCount = u.bytesLeft;
             switch(u.lastInstruction){
                 case HELLO_INSTRUCTION:
-                    tc.updatePeek(socketID,length_to_read);
+                    call tc.updatePeek(socketID,length_to_read);
                     u.bytesLeft=0;
                     dbg(CHAOS_SERVER_CHANNEL,"Unexpected Hello from already connected user\n");
                     break;
                 case CHAT_INSTRUCTION:
-                    int i=0;
-                    int num_users = users.size();
-                    uint32_t sid;
-                    uint8_t room;
                     for(i=0;i<num_users;i++){
-                        sid = users.getIndex(i);
+                        sid = call users.getIndex(i);
                         room = call tc.checkWriteRoom(sid);
                         if(room<byteCount){
                             byteCount=room;
                         }
                     }
-                    tc.read(socketID,byteCount,&(readBuffer[0]));
+                    call tc.read(socketID,byteCount,&(readBuffer[0]));
                     for(i=0;i<num_users;i++){
-                        sid = users.getIndex(i);
-                        e = tc.write(sid,&(readBuffer[0]),byteCount);
+                        sid = call users.getIndex(i);
+                        e = call tc.write(sid,&(readBuffer[0]),byteCount);
                         if(e!=SUCCESS){
                             dbg(TRANSPORT_CHANNEL,"Write Problems in Chat Instruction\n");
                         }
@@ -87,19 +88,19 @@ implementation{
                     u.bytesLeft-=byteCount;
                     break;
                 case WHISPER_INSTRUCTION:
-                    uint8_t room = call tc.checkWriteRoom(u.whisperSocketID);
+                    room = call tc.checkWriteRoom(u.whisperSocketID);
                     if(room<byteCount){
                         byteCount=room;
                     }
-                    tc.read(socketID,byteCount,&(readBuffer[0]));
-                    e = tc.write(u.whisperSocketID,&(readBuffer[0]),byteCount);
+                    call tc.read(socketID,byteCount,&(readBuffer[0]));
+                    e = call tc.write(u.whisperSocketID,&(readBuffer[0]),byteCount);
                     if(e!=SUCCESS){
                         dbg(TRANSPORT_CHANNEL,"Write Problems in Whisper Instruction\n");
                     }
                     u.bytesLeft-=byteCount;
                     break;
                 case GOODBYE_INSTRUCTION:
-                    tc.read(socketID,length_to_read,&(peekBuffer[0]));
+                    call tc.read(socketID,length_to_read,&(peekBuffer[0]));
                     u.bytesLeft=0;
                     userkey = hashUsername((uint32_t*)&(peekBuffer[2]));
                     call sockets.remove(userkey);
@@ -107,15 +108,11 @@ implementation{
                     dbg(CHAOS_SERVER_CHANNEL,"Removed user %s\n",&(peekBuffer[2]));
                     break;
                 case LIST_USERS_INSTRUCTION:
-                    int i=0;
-                    int num_users = call users.size();
-                    uint32_t sid;
-                    user otherUser;
-                    tc.read(socketID,length_to_read,&(readBuffer[0]));
+                    call tc.read(socketID,length_to_read,&(readBuffer[0]));
                     for(i=0;i<num_users;i++){
                         sid = call users.getIndex(i);
                         otherUser = call users.get(sid);
-                        e =tc.write(socketID,&(otherUser.username[0]),otherUser.usernameLength);
+                        e = call tc.write(socketID,&(otherUser.username[0]),otherUser.usernameLength);
                         if(e!=SUCCESS){
                             dbg(TRANSPORT_CHANNEL,"Write Problems in List Instruction\n");
                         }
@@ -130,21 +127,22 @@ implementation{
                 u.lastInstruction=NULL_INSTRUCTION;
             }
             else if(u.bytesLeft<0){
-                dbg(CHAOS_SERVER_CHANNEL,"Was there a byte alignment problem? Socket %d has %d bytes left\n",sockedID,u.bytesLeft);
+                dbg(CHAOS_SERVER_CHANNEL,"Was there a byte alignment problem? Socket %d has %d bytes left\n",socketID,u.bytesLeft);
             }
-            users.insert(socketID,u);
+            call users.insert(socketID,u);
         }
         else{
-            tc.read(socketID,14,&(readBuffer[0]));
+            call tc.read(socketID,14,&(readBuffer[0]));
             if(readBuffer[0]==HELLO_INSTRUCTION){
-                memcpy(&(u.username[0]),&(readBuffer[3]),readBuffer[1])//assuming username in first packet completely
+                u.lastInstruction=NULL_INSTRUCTION;
+                memcpy(&(u.username[0]),&(readBuffer[3]),readBuffer[1]);//assuming username in first packet completely
                 userkey = hashUsername((uint32_t*)&(u.username[0]));
                 if(call sockets.contains(userkey)){
                     dbg(CHAOS_SERVER_CHANNEL, "ERROR: Username Hash Collision\n");
                 }
                 else{
                     call sockets.insert(userkey,socketID);
-                    call users.insert(socketID,);
+                    call users.insert(socketID,u);
                 }
             }
             else{
@@ -152,8 +150,8 @@ implementation{
             }
         }
     }
-    event void closing(uint32_t IDtoClose){
-        command tc.finishClose(IDtoClose);
+    event void tc.closing(uint32_t IDtoClose){
+        call tc.finishClose(IDtoClose);
     }
-    event void wtf(uint32_t socketID){}
+    event void tc.wtf(uint32_t socketID){}
 }
