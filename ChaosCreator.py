@@ -18,9 +18,9 @@ def main():
     # After sending a ping, simulate a little to prevent collision.
     s.runTime(100)
 
-    s.host(1)
+    hostServer=1
+    s.host(hostServer)
     s.runTime(20)
-
     if input("Launch interactive simulator? (1:Y \ 0:N)") == 1:
         userInput = 0
         while(userInput != -1):
@@ -29,51 +29,55 @@ def main():
                 client = input("Enter node to chat: ")
                 message = input("Enter message: ")
                 s.chat(client, message)
-            if userInput == 2:
+            elif userInput == 2:
                 client = input("Enter whisper sender: ")
                 targetClient = input("Enter whisper recipient username: ")
                 targetClientID = input("Enter whisper recipient ID: ")
                 message = input("Enter message: ")
                 s.whisper(client, targetClientID, targetClient, message)
-            if userInput == 3:
+            elif userInput == 3:
                 client = input("Enter quitting node: ")
-                server = input("Enter server to quit from: ")
+                # server = input("Enter server to quit from: ")
+                server = hostServer
                 s.goodbye(client, server)
-            if userInput == 4:
+            elif userInput == 4:
                 client = input("Enter client: ")
-                server = input("Enter server: ")
+                # server = input("Enter server: ")
+                server = hostServer
                 s.printUsers(client, server)
-            if userInput == 5:
+            elif userInput == 5:
                 client = input("Enter client: ")
-                server = input("Enter server: ")
+                # server = input("Enter server: ")
+                server = hostServer
                 username = input("Enter username: ")
                 s.hello(client, server, username)
             s.runTime(30)
     else:
         s.hello(16,1, "Icywind")
         s.runTime(20)
-        s.hello(23,1, "Gand")
+        s.hello(23,1, "Gandle")
         s.runTime(20)
         s.chat(23,"Hello World")
         s.runTime(20)
         
-        s.hello(7,1, "Saur")
+        s.hello(7,1, "Saure")
         s.runTime(20)
         
         s.chat(7,"Hi everyone")
         s.runTime(20)
         
-        s.whisper(7,23,"Gand","Hi G!")
+        s.whisper(7,23,"Gandle","Hi G!")
         s.runTime(20)
         
+        s.goodbye(7,1)
+        s.runTime(20)
+
         s.printUsers(16,1)
         s.runTime(20)
         
         s.goodbye(16,1)
         s.runTime(20)
         s.goodbye(23,1)
-        s.runTime(20)
-        s.goodbye(7,1)
         s.runTime(20)
 
 if __name__ == '__main__':

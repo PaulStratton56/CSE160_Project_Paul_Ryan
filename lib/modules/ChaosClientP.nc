@@ -37,9 +37,13 @@ implementation{
         memcpy(&(helloMessage[3]), newUser, userLength);
 
         //Continue asking for a port until TC complies.
-        while(result == FAIL){
-            result = call TC.getPort(clientPort, 10);
+        // while(result == FAIL){
+        result = call TC.getPort(clientPort, 10);
+        if(result==FAIL){
+            dbg(CHAOS_CLIENT_CHANNEL,"Can't get port\n");
+            return;
         }
+        // }
 
         //Request a connection with the server.
         clientSocket = call TC.requestConnection(dest, 11, clientPort);
@@ -171,8 +175,8 @@ implementation{
             bytesToSend -= call TC.write(clientSocket, printUsersMessage, bytesToSend);
         // }
 
-        dbg(CHAOS_CLIENT_CHANNEL, "Send |%d|.\n", printUsersMessage[0]);
-        dbg(CHAOS_CLIENT_CHANNEL, "Getting users!\n");
+        // dbg(CHAOS_CLIENT_CHANNEL, "Send |%d|.\n", printUsersMessage[0]);
+        dbg(CHAOS_CLIENT_CHANNEL, "Can I have the user list?\n");
     }
 
     event void TC.gotData(uint32_t socketID, uint8_t length){
@@ -228,9 +232,9 @@ implementation{
                 memset(&(incomingMail[0]), 0, 256);
                 }
             }
-            else{
-                dbg(CHAOS_CLIENT_CHANNEL, "Still missing %d bytes. Expecting %d, have %d!!!\n", (fullIncomingLength-receivedUntil),fullIncomingLength,receivedUntil);
-            }
+            // else{
+            //     dbg(CHAOS_CLIENT_CHANNEL, "Still missing %d bytes. Expecting %d, have %d!!!\n", (fullIncomingLength-receivedUntil),fullIncomingLength,receivedUntil);
+            // }
         }
     }
 
